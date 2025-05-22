@@ -1,0 +1,176 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Ambientes Virtuais
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.python-version
+
+# IDEs e Editores
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+*.sublime-workspace
+*.sublime-project
+.ropeproject/
+
+# Arquivos de Teste e Cobertura
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+htmlcov/
+.tox/
+.nox/
+
+# Arquivos de Log
+*.log
+logs/
+log/
+
+# Arquivos de Banco de Dados
+*.db
+*.sqlite3
+*.sqlite
+infog2.db
+
+# Arquivos de Sistema
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Arquivos de Ambiente
+.env
+.env.*
+!.env.example
+*.env
+
+# Arquivos de Cache
+.cache/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+__pycache__/
+
+# Arquivos de Build e Deploy
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.dylib
+*.dll
+
+# Arquivos de Documentação
+docs/_build/
+site/
+
+# Arquivos Temporários
+*.bak
+*.tmp
+*.temp
+*.swp
+*~
+
+# Arquivos de Dependências
+node_modules/
+bower_components/
+jspm_packages/
+
+# Arquivos de Configuração Local
+instance/
+.webassets-cache
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Arquivos de Backup
+*.bak
+*.backup
+*~
+
+# Arquivos de Debug
+debug.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Arquivos de Docker
+.docker/
+docker-compose.override.yml
+
+# Arquivos de Poetry
+poetry.lock
+
+# Arquivos de Rope
+.ropeproject/
+
+# Arquivos de Coverage
+coverage/
+.coverage
+coverage.xml
+*.cover
+.hypothesis/
+
+# Arquivos de Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# Arquivos de MongoDB
+mongodb_data/
+data/db/
+
+# Arquivos de Redis
+*.rdb
+dump.rdb
+
+# Arquivos de Certificados
+*.pem
+*.key
+*.crt
+*.cer
+*.der
+*.p12
+*.pfx
+
+# Arquivos de Backup do Banco de Dados
+*.dump
+*.sql
+*.sqlite3-journal
