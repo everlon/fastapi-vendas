@@ -70,7 +70,7 @@ async def update_client(id: int, client_data: ClientUpdate, db: AsyncSession) ->
     db_client = result.scalar_one_or_none()
 
     if not db_client:
-        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Cliente não encontrado")
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Cliente não encontrado")
 
     if client_data.name is not None:
         db_client.name = client_data.name
@@ -101,7 +101,7 @@ async def delete_client(id: int, db: AsyncSession) -> None:
     db_client = result.scalar_one_or_none()
 
     if not db_client:
-        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Cliente não encontrado")
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Cliente não encontrado")
 
     await db.delete(db_client)
     await db.commit()

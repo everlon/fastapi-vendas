@@ -102,8 +102,14 @@ async def list_products(
 
 
 async def get_product_by_id(id: int, db: AsyncSession) -> Product:
+    """
+    Obtém um produto pelo seu ID.
+    """
     result = await db.execute(select(Product).where(Product.id == id))
-    return result.scalar_one_or_none()
+    product = result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Produto não encontrado")
+    return product
 
 
 async def update_product(id: int, product_data: ProductUpdate, db: AsyncSession) -> Product:
@@ -111,7 +117,7 @@ async def update_product(id: int, product_data: ProductUpdate, db: AsyncSession)
     db_product = result.scalar_one_or_none()
 
     if not db_product:
-        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Produto não encontrado")
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Produto não encontrado")
 
     if product_data.name is not None:
         db_product.name = product_data.name
@@ -149,7 +155,7 @@ async def delete_product(id: int, db: AsyncSession) -> None:
     db_product = result.scalar_one_or_none()
 
     if not db_product:
-        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Produto não encontrado")
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Produto não encontrado")
 
     await db.delete(db_product)
     await db.commit()

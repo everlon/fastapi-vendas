@@ -5,8 +5,11 @@ from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import StaticPool
 from fastapi import FastAPI
 
-from database import Base # Importar Base do database.py
-from database import get_db # Importar get_db do database.py (para sobrescrever)
+from database import Base, get_db # Importar Base do seu models ou database
+from src.models.order import Order, OrderItem # Importar modelos de Pedido
+from src.models.product import Product # Precisamos do modelo de produto para criar produtos de teste
+from src.models.user import User # Precisamos do modelo de usuário para criar um usuário de teste
+from src.schemas.user import UserCreate
 from src.services.user_service import get_password_hash
 
 # Importar roteadores diretamente

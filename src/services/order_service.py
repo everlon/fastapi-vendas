@@ -99,7 +99,7 @@ async def update_order(db: AsyncSession, order_id: int, order_update_data: Order
     """
     order = await get_order_by_id(db, order_id)
     if not order:
-        return None
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Pedido não encontrado")
 
     update_data = order_update_data.model_dump(exclude_unset=True)
 
@@ -118,7 +118,7 @@ async def delete_order(db: AsyncSession, order_id: int):
     """
     order = await get_order_by_id(db, order_id)
     if not order:
-        return None
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Pedido não encontrado")
 
     # Reverter estoque dos produtos ao deletar o pedido
     for item in order.items:

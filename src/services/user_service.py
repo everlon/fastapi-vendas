@@ -2,6 +2,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.exc import IntegrityError
 from passlib.context import CryptContext
+from fastapi import HTTPException
+from http import HTTPStatus
 
 from src.models.user import User
 from src.schemas.user import UserCreate
@@ -34,4 +36,4 @@ async def create_user(db: AsyncSession, user: UserCreate):
         return db_user
     except IntegrityError:
         await db.rollback()
-        return None # Retorna None se o usuário já existir (username ou email) 
+        raise HTTPException(status_code=HTTPStatus.CONFLICT, detail="Nome de usuário ou email já cadastrado.") 
