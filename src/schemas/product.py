@@ -22,7 +22,8 @@ class ProductCreate(BaseModel):
     images: Optional[List[str]] = Field(None, description="Lista de URLs das imagens do produto")
 
     class Config:
-        orm_mode = True
+        # orm_mode = True
+        from_attributes = True
 
 
 class ProductResponse(ProductCreate):

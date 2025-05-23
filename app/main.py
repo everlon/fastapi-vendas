@@ -2,9 +2,10 @@ from fastapi import FastAPI, Depends
 
 # from database import Base, engine
 
-from src.routers.product_controller import router as product_router
-from src.routers.auth_controller import router as auth_router
-from src.routers.client_controller import router as client_router
+from src.routers import product_controller
+from src.routers import client_controller
+from src.routers import user_controller
+from src.routers import order_controller
 
 from auth import get_current_active_user
 
@@ -35,21 +36,28 @@ async def root():
 
 
 app.include_router(
-    product_router,
+    product_controller.router,
     prefix=f"{version_prefix}/products",
     tags=["products"],
     dependencies=[Depends(get_current_active_user)]
 )
 
 app.include_router(
-    auth_router,
-    prefix=f"{version_prefix}/auth",
-    tags=["auth"]
+    order_controller.router,
+    prefix=f"{version_prefix}/orders",
+    tags=["orders"],
+    dependencies=[Depends(get_current_active_user)]
 )
 
 app.include_router(
-    client_router,
+    client_controller.router,
     prefix=f"{version_prefix}/clients",
     tags=["clients"],
     dependencies=[Depends(get_current_active_user)]
+)
+
+app.include_router(
+    user_controller.router,
+    prefix=f"{version_prefix}/users",
+    tags=["users"]
 )

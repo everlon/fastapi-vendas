@@ -23,7 +23,7 @@ from typing import Annotated
 from auth import User, get_current_active_user
 
 
-router = APIRouter(prefix="/api/v1/clients", tags=["clients"])
+router = APIRouter()
 
 
 @router.post("/", status_code=HTTPStatus.CREATED, response_model=ClientResponse)

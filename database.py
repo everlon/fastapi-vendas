@@ -4,9 +4,7 @@ from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.pool import NullPool
-from sqlalchemy import Column, Integer, JSON, select, DateTime
 from dotenv import load_dotenv
-from datetime import datetime
 
 # Carrega variáveis de ambiente
 load_dotenv()
@@ -21,7 +19,7 @@ DATABASE_URL = os.getenv(
 engine = create_async_engine(
     DATABASE_URL,
     echo=True,  # Log de queries (desativar em produção)
-    future=True,
+    future=True, # Manter future=True para async
     poolclass=NullPool,  # Desativa o pool de conexões para desenvolvimento
     pool_pre_ping=True,  # Verifica conexão antes de usar
 )
@@ -38,7 +36,7 @@ AsyncSessionLocal = sessionmaker(
 # Base para modelos
 Base = declarative_base()
 
-# Dependency para obter sessão do banco
+# Dependency para obter sessão do banco (assíncrona)
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         try:

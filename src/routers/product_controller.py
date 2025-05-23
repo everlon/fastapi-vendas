@@ -87,7 +87,7 @@ async def get_product_by_id_endpoint(id: int, db: Session = Depends(get_db), use
     if not product:
         raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Produto não encontrado")
 
-    response_data = { "product": product }
+    response_data = { "product": product, "views": [] }
 
     return response_data
 

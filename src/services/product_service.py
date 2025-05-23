@@ -3,7 +3,10 @@ from fastapi import HTTPException
 from http import HTTPStatus
 from datetime import datetime
 
+from sqlalchemy.future import select
 from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func
 
 from src.models.product import Product
 from src.schemas.product import (
@@ -30,11 +33,13 @@ async def map_status(status_str: str) -> ProductStatusEnum:
     return status
 
 
-async def create_product(product_data: ProductCreate, db: Session) -> Product:
+async def create_product(product_data: ProductCreate, db: AsyncSession) -> Product:
     status = await map_status(product_data.status.value)
 
     # Verifica unicidade do código de barras
-    if db.query(Product).filter(Product.barcode == product_data.barcode).first():
+    result = await db.execute(select(Product).where(Product.barcode == product_data.barcode))
+    existing_product = result.scalar_one_or_none()
+    if existing_product:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Código de barras já cadastrado.")
 
     new_product = Product(
@@ -50,14 +55,14 @@ async def create_product(product_data: ProductCreate, db: Session) -> Product:
     )
 
     db.add(new_product)
-    db.commit()
-    db.refresh(new_product)
+    await db.commit()
+    await db.refresh(new_product)
 
     return new_product
 
 
 async def list_products(
-    db: Session,
+    db: AsyncSession,
     page: int = 1,
     page_size: int = 10,
     search: str = None,
@@ -66,40 +71,44 @@ async def list_products(
     min_price: float = None,
     max_price: float = None
 ):
-    query = db.query(Product)
+    query = select(Product)
 
     if search:
-        query = query.filter(or_(
+        query = query.where(or_(
             Product.name.ilike(f"%{search}%"),
             Product.description.ilike(f"%{search}%")
         ))
 
     if status:
         status_enum = await map_status(status)
-        query = query.filter(Product.status == status_enum)
+        query = query.where(Product.status == status_enum)
 
     if section:
-        query = query.filter(Product.section.ilike(f"%{section}%"))
+        query = query.where(Product.section.ilike(f"%{section}%"))
 
     if min_price is not None:
-        query = query.filter(Product.price >= min_price)
+        query = query.where(Product.price >= min_price)
 
     if max_price is not None:
-        query = query.filter(Product.price <= max_price)
+        query = query.where(Product.price <= max_price)
 
-    total = query.count()
-    products = query.offset((page - 1) * page_size).limit(page_size).all()
+    total_result = await db.execute(select(func.count()).select_from(query.subquery()))
+    total = total_result.scalar_one()
+
+    products_result = await db.execute(query.offset((page - 1) * page_size).limit(page_size))
+    products = products_result.scalars().all()
 
     return products, total
 
 
-async def get_product_by_id(id: int, db: Session) -> Product:
+async def get_product_by_id(id: int, db: AsyncSession) -> Product:
+    result = await db.execute(select(Product).where(Product.id == id))
+    return result.scalar_one_or_none()
 
-    return db.query(Product).filter(Product.id == id).first()
 
-
-async def update_product(id: int, product_data: ProductUpdate, db: Session) -> Product:
-    db_product = db.query(Product).filter(Product.id == id).first()
+async def update_product(id: int, product_data: ProductUpdate, db: AsyncSession) -> Product:
+    result = await db.execute(select(Product).where(Product.id == id))
+    db_product = result.scalar_one_or_none()
 
     if not db_product:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Produto não encontrado")
@@ -115,8 +124,10 @@ async def update_product(id: int, product_data: ProductUpdate, db: Session) -> P
     if product_data.stock_quantity is not None:
         db_product.stock_quantity = product_data.stock_quantity
     if product_data.barcode is not None and product_data.barcode != db_product.barcode:
-        # Verifica unicidade do código de barras
-        if db.query(Product).filter(Product.barcode == product_data.barcode, Product.id != id).first():
+        # Verifica unicidade do código de barras (agora assíncrono)
+        result_unique = await db.execute(select(Product).where(Product.barcode == product_data.barcode, Product.id != id))
+        existing_product_unique = result_unique.scalar_one_or_none()
+        if existing_product_unique:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Código de barras já cadastrado.")
         db_product.barcode = product_data.barcode
     if product_data.section is not None:
@@ -128,16 +139,17 @@ async def update_product(id: int, product_data: ProductUpdate, db: Session) -> P
 
     db_product.updated_at = datetime.utcnow()
 
-    db.commit()
-    db.refresh(db_product)
+    await db.commit()
+    await db.refresh(db_product)
 
     return db_product
 
-async def delete_product(id: int, db: Session) -> None:
-    db_product = db.query(Product).filter(Product.id == id).first()
+async def delete_product(id: int, db: AsyncSession) -> None:
+    result = await db.execute(select(Product).where(Product.id == id))
+    db_product = result.scalar_one_or_none()
 
     if not db_product:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Produto não encontrado")
 
-    db.delete(db_product)
-    db.commit()
+    await db.delete(db_product)
+    await db.commit()

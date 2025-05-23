@@ -4,6 +4,9 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import or_
+from sqlalchemy.future import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func
 
 from src.models.client import Client
 from src.schemas.client import (
@@ -13,9 +16,11 @@ from src.schemas.client import (
 )
 
 
-async def create_client(client_data: ClientCreate, db: Session) -> Client:
+async def create_client(client_data: ClientCreate, db: AsyncSession) -> Client:
     # Verifica unicidade do email
-    if db.query(Client).filter(Client.email == client_data.email).first():
+    result = await db.execute(select(Client).where(Client.email == client_data.email))
+    existing_client = result.scalar_one_or_none()
+    if existing_client:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Email já cadastrado.")
 
     new_client = Client(
@@ -26,38 +31,43 @@ async def create_client(client_data: ClientCreate, db: Session) -> Client:
     )
 
     db.add(new_client)
-    db.commit()
-    db.refresh(new_client)
+    await db.commit()
+    await db.refresh(new_client)
 
     return new_client
 
 
 async def list_clients(
-    db: Session,
+    db: AsyncSession,
     page: int = 1,
     page_size: int = 10,
     search: str = None
 ):
-    query = db.query(Client)
+    query = select(Client)
 
     if search:
-        query = query.filter(or_(
+        query = query.where(or_(
             Client.name.ilike(f"%{search}%"),
             Client.email.ilike(f"%{search}%")
         ))
 
-    total = query.count()
-    clients = query.offset((page - 1) * page_size).limit(page_size).all()
+    total_result = await db.execute(select(func.count()).select_from(query.subquery()))
+    total = total_result.scalar_one()
+
+    clients_result = await db.execute(query.offset((page - 1) * page_size).limit(page_size))
+    clients = clients_result.scalars().all()
 
     return clients, total
 
 
-async def get_client_by_id(id: int, db: Session) -> Client:
-    return db.query(Client).filter(Client.id == id).first()
+async def get_client_by_id(id: int, db: AsyncSession) -> Client:
+    result = await db.execute(select(Client).where(Client.id == id))
+    return result.scalar_one_or_none()
 
 
-async def update_client(id: int, client_data: ClientUpdate, db: Session) -> Client:
-    db_client = db.query(Client).filter(Client.id == id).first()
+async def update_client(id: int, client_data: ClientUpdate, db: AsyncSession) -> Client:
+    result = await db.execute(select(Client).where(Client.id == id))
+    db_client = result.scalar_one_or_none()
 
     if not db_client:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Cliente não encontrado")
@@ -65,8 +75,10 @@ async def update_client(id: int, client_data: ClientUpdate, db: Session) -> Clie
     if client_data.name is not None:
         db_client.name = client_data.name
     if client_data.email is not None and client_data.email != db_client.email:
-         # Verifica unicidade do email
-        if db.query(Client).filter(Client.email == client_data.email, Client.id != id).first():
+         # Verifica unicidade do email (agora assíncrono)
+        result_unique = await db.execute(select(Client).where(Client.email == client_data.email, Client.id != id))
+        existing_client_unique = result_unique.scalar_one_or_none()
+        if existing_client_unique:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Email já cadastrado.")
         db_client.email = client_data.email
     if client_data.phone is not None:
@@ -78,17 +90,18 @@ async def update_client(id: int, client_data: ClientUpdate, db: Session) -> Clie
 
     db_client.updated_at = datetime.utcnow()
 
-    db.commit()
-    db.refresh(db_client)
+    await db.commit()
+    await db.refresh(db_client)
 
     return db_client
 
 
-async def delete_client(id: int, db: Session) -> None:
-    db_client = db.query(Client).filter(Client.id == id).first()
+async def delete_client(id: int, db: AsyncSession) -> None:
+    result = await db.execute(select(Client).where(Client.id == id))
+    db_client = result.scalar_one_or_none()
 
     if not db_client:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Cliente não encontrado")
 
-    db.delete(db_client)
-    db.commit()
+    await db.delete(db_client)
+    await db.commit()

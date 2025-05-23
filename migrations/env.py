@@ -9,6 +9,9 @@ from alembic import context
 
 from database import Base
 from src.models.product import Product
+from src.models.client import Client
+from src.models.user import User
+from src.models.order import Order, OrderItem
 
 # Carrega variáveis de ambiente
 load_dotenv()

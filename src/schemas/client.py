@@ -21,7 +21,8 @@ class ClientResponse(BaseModel):
     updated_at: Optional[datetime] = Field(None, description="Data de última atualização do cliente")
 
     class Config:
-        orm_mode = True
+        # orm_mode = True
+        from_attributes = True
 
 class ClientUpdate(BaseModel):
     name: Optional[str] = Field(None, description="Nome do cliente", max_length=100)
