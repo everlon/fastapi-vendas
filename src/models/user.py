@@ -12,6 +12,7 @@ class User(Base):
     full_name = Column(String, nullable=True)
     hashed_password = Column(String, nullable=False)
     disabled = Column(Boolean, default=False)
+    is_admin = Column(Boolean, default=False)
 
     created_orders = relationship("Order", back_populates="created_by_user")
 

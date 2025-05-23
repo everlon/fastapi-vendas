@@ -1,7 +1,8 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator, field_validator
 from enum import Enum
 from typing import List, Optional
 from datetime import datetime
+from src.validators import validate_barcode, validate_future_date
 
 
 class ProductStatusEnum(str, Enum):
@@ -20,6 +21,19 @@ class ProductCreate(BaseModel):
     section: Optional[str] = Field(None, description="Seção/Categoria do produto.", max_length=100, example="Eletrônicos")
     expiration_date: Optional[datetime] = Field(None, description="Data de validade do produto.", example="2024-12-31T23:59:59")
     images: Optional[List[str]] = Field(None, description="Lista de URLs das imagens do produto.", example=["http://example.com/img1.jpg", "http://example.com/img2.jpg"])
+
+    _validate_barcode = field_validator('barcode')(validate_barcode)
+    _validate_expiration_date = field_validator('expiration_date')(validate_future_date)
+
+    @field_validator('images')
+    @classmethod
+    def validate_image_urls(cls, v):
+        if v is None:
+            return v
+        for url in v:
+            if not url.startswith(('http://', 'https://')):
+                raise ValueError("URLs de imagens devem começar com http:// ou https://")
+        return v
 
     class Config:
         # orm_mode = True
@@ -50,6 +64,9 @@ class ProductListResponse(BaseModel):
     status: ProductStatusEnum = Field(..., description="Status do produto.", example=ProductStatusEnum.in_stock)
     stock_quantity: int = Field(..., ge=0, description="Quantidade em estoque do produto.", example=10)
 
+    _validate_barcode = field_validator('barcode')(validate_barcode)
+    _validate_expiration_date = field_validator('expiration_date')(validate_future_date)
+
 
 class PaginatedProductResponse(BaseModel):
     products: List[ProductListResponse] = Field(..., description="Lista de produtos na página atual.")
@@ -69,6 +86,19 @@ class ProductUpdate(BaseModel):
     section: Optional[str] = Field(None, description="Seção/Categoria do produto.", max_length=100, example="Informática")
     expiration_date: Optional[datetime] = Field(None, description="Data de validade do produto.", example="2025-12-31T23:59:59")
     images: Optional[List[str]] = Field(None, description="Lista de URLs das imagens do produto.", example=["http://example.com/img_pro.jpg"])
+
+    _validate_barcode = field_validator('barcode')(validate_barcode)
+    _validate_expiration_date = field_validator('expiration_date')(validate_future_date)
+
+    @field_validator('images')
+    @classmethod
+    def validate_image_urls(cls, v):
+        if v is None:
+            return v
+        for url in v:
+            if not url.startswith(('http://', 'https://')):
+                raise ValueError("URLs de imagens devem começar com http:// ou https://")
+        return v
 
     class Config:
         from_attributes = True

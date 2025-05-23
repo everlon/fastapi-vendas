@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import delete
 from fastapi import FastAPI, Depends
+from datetime import datetime
 
 from database import Base, get_db
 
@@ -106,12 +107,26 @@ async def authenticated_user_token_str(client: AsyncClient, authenticated_user: 
 @pytest.fixture
 async def test_client(authenticated_user: User): 
     async with TestingSessionLocal() as db:
-        client_data = ClientCreate(name="Cliente Teste", email="cliente@example.com", phone="11999998888", address="Rua Teste, 123")
+        client_data = ClientCreate(
+            name="Cliente Teste",
+            email="cliente@example.com",
+            phone="11999998888",
+            address={
+                "street": "Rua Teste",
+                "number": "123",
+                "complement": "Apto 1",
+                "neighborhood": "Centro",
+                "city": "São Paulo",
+                "state": "SP",
+                "zip_code": "01234567"
+            },
+            cpf="52998224725"
+        )
         from src.services.client_service import create_client
         client = await create_client(db=db, client_data=client_data)
         await db.commit()
         await db.refresh(client)
-        return client 
+        return client
 
 @pytest.fixture
 async def test_products():
@@ -238,6 +253,7 @@ async def test_create_order_client_not_found(client: AsyncClient, authenticated_
 async def test_list_orders(client: AsyncClient, authenticated_user_token_str: str, test_products: list[Product], test_client: Client, authenticated_user: User): # Atualizadas dependências e tipos
     product1_data = test_products[0]
     
+    # Criar múltiplos pedidos para testar listagem e filtros
     order_data1 = {"client_id": test_client.id, "items": [{"product_id": product1_data.id, "quantity": 1}]}
     create_response1 = await client.post(
         "/api/v1/orders/",
@@ -247,6 +263,7 @@ async def test_list_orders(client: AsyncClient, authenticated_user_token_str: st
         }
     )
     assert create_response1.status_code == 201
+    order1 = create_response1.json() # Salvar o pedido criado
 
     order_data2 = {"client_id": test_client.id, "items": [{"product_id": product1_data.id, "quantity": 2}]}
     create_response2 = await client.post(
@@ -257,31 +274,383 @@ async def test_list_orders(client: AsyncClient, authenticated_user_token_str: st
         }
     )
     assert create_response2.status_code == 201
+    # Não precisamos salvar order2 para o teste básico de listagem
 
-    response_all = await client.get(
+    response = await client.get(
         "/api/v1/orders/",
         headers={
             "Authorization": f"Bearer {authenticated_user_token_str}"
         }
     )
-    assert response_all.status_code == 200
-    data_all = response_all.json()
-    assert data_all["total"] >= 2 
-    
-    response_filtered = await client.get(
-        f"/api/v1/orders/?client_id={test_client.id}", 
+    assert response.status_code == 200
+    data = response.json()
+
+    assert "orders" in data
+    assert "total" in data
+    assert "page" in data
+    assert "page_size" in data
+    assert "total_pages" in data
+
+    # Filtrar apenas os pedidos criados por este teste (pode haver outros de testes anteriores)
+    # Uma forma mais robusta seria limpar o banco antes de cada teste de listagem, mas por enquanto,
+    # podemos verificar se pelo menos os pedidos que criamos estão presentes.
+    # Ou melhor, garantir a limpeza no setup do teste de listagem.
+    # Já temos a limpeza na fixture authenticated_user, então isso deve garantir um ambiente limpo.
+
+    # Precisamos garantir que order1 e order2 estão na lista
+    order_ids_in_list = [order["id"] for order in data["orders"]]
+    assert order1["id"] in order_ids_in_list
+    # assert order2["id"] in order_ids_in_list # Removido pois o teste básico não precisa verificar order2 explicitamente
+
+    # Verificar os campos client_id e created_by_user_id nos pedidos listados
+    # O teste básico de listagem verifica apenas que a lista não está vazia e contém campos esperados
+    # Testes de filtro verificarão os conteúdos específicos.
+
+    # TODO: Testar paginação no futuro
+    # TODO: Testar filtros (order_id, status, section, start_date, end_date) em testes separados
+
+# Novo teste para listar pedidos filtrando por ID do pedido
+@pytest.mark.asyncio
+async def test_list_orders_filter_by_id(client: AsyncClient, authenticated_user_token_str: str, test_products: list[Product], test_client: Client, authenticated_user: User):
+    product_data = test_products[0]
+    # Criar um pedido para filtrar
+    order_data = {"client_id": test_client.id, "items": [{"product_id": product_data.id, "quantity": 1}]}
+    create_response = await client.post(
+        "/api/v1/orders/",
+        json=order_data,
         headers={
             "Authorization": f"Bearer {authenticated_user_token_str}"
         }
     )
-    assert response_filtered.status_code == 200
-    data_filtered = response_filtered.json()
-    assert data_filtered["total"] == 2 
-    assert len(data_filtered["orders"]) == 2
+    assert create_response.status_code == 201
+    created_order = create_response.json()
+    order_id_to_filter = created_order["id"]
 
-    for order in data_filtered["orders"]:
-        assert order["client_id"] == test_client.id
-        assert order["created_by_user_id"] == authenticated_user.id
+    # Listar pedidos filtrando pelo ID
+    response = await client.get(
+        f"/api/v1/orders/?order_id={order_id_to_filter}",
+        headers={
+            "Authorization": f"Bearer {authenticated_user_token_str}"
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    assert len(data["orders"]) == 1 # Deve retornar apenas 1 pedido
+    assert data["total"] == 1        # O total deve ser 1
+    assert data["orders"][0]["id"] == order_id_to_filter # Verificar se o ID do pedido retornado é o esperado
+    assert data["orders"][0]["client_id"] == test_client.id
+    assert data["orders"][0]["created_by_user_id"] == authenticated_user.id
+
+# Novo teste para listar pedidos filtrando por status
+@pytest.mark.asyncio
+async def test_list_orders_filter_by_status(client: AsyncClient, authenticated_user_token_str: str, test_products: list[Product], test_client: Client, authenticated_user: User):
+    product_data = test_products[0]
+    # Criar um pedido com status 'pendente'
+    order_data_pending = {"client_id": test_client.id, "items": [{"product_id": product_data.id, "quantity": 1}]}
+    create_response_pending = await client.post(
+        "/api/v1/orders/",
+        json=order_data_pending,
+        headers={
+            "Authorization": f"Bearer {authenticated_user_token_str}"
+        }
+    )
+    assert create_response_pending.status_code == 201
+    order_pending = create_response_pending.json()
+
+    # Criar outro pedido e atualizar status para 'enviado'
+    order_data_to_ship = {"client_id": test_client.id, "items": [{"product_id": product_data.id, "quantity": 1}]}
+    create_response_to_ship = await client.post(
+        "/api/v1/orders/",
+        json=order_data_to_ship,
+        headers={
+            "Authorization": f"Bearer {authenticated_user_token_str}"
+        }
+    )
+    assert create_response_to_ship.status_code == 201
+    order_to_ship = create_response_to_ship.json()
+
+    update_response = await client.put(
+        f"/api/v1/orders/{order_to_ship['id']}",
+        json={"status": "enviado"},
+        headers={
+            "Authorization": f"Bearer {authenticated_user_token_str}"
+        }
+    )
+    assert update_response.status_code == 200
+
+    # Listar pedidos filtrando por status 'pendente'
+    response_pending = await client.get(
+        "/api/v1/orders/?status=pendente",
+        headers={
+            "Authorization": f"Bearer {authenticated_user_token_str}"
+        }
+    )
+    assert response_pending.status_code == 200
+    data_pending = response_pending.json()
+
+    assert len(data_pending["orders"]) >= 1 # Deve conter o pedido 'pendente' criado neste teste
+    assert all(order["status"] == "pendente" for order in data_pending["orders"])
+    order_ids_pending = [order["id"] for order in data_pending["orders"]]
+    assert order_pending["id"] in order_ids_pending
+
+    # Listar pedidos filtrando por status 'enviado'
+    response_shipped = await client.get(
+        "/api/v1/orders/?status=enviado",
+        headers={
+            "Authorization": f"Bearer {authenticated_user_token_str}"
+        }
+    )
+    assert response_shipped.status_code == 200
+    data_shipped = response_shipped.json()
+
+    assert len(data_shipped["orders"]) >= 1 # Deve conter o pedido 'enviado' criado neste teste
+    assert all(order["status"] == "enviado" for order in data_shipped["orders"])
+    order_ids_shipped = [order["id"] for order in data_shipped["orders"]]
+    assert order_to_ship["id"] in order_ids_shipped
+
+# Novo teste para listar pedidos filtrando por seção de produtos
+@pytest.mark.asyncio
+async def test_list_orders_filter_by_section(client: AsyncClient, authenticated_user_token_str: str, test_products: list[Product], test_client: Client, authenticated_user: User):
+    # Assumindo que test_products[0] é 'Eletrônicos' e test_products[1] é 'Livros'
+    product_eletronico = test_products[0]
+    product_livro = test_products[1]
+
+    # Criar um pedido com item eletrônico
+    order_eletronico_data = {"client_id": test_client.id, "items": [{"product_id": product_eletronico.id, "quantity": 1}]}
+    create_response_eletronico = await client.post(
+        "/api/v1/orders/",
+        json=order_eletronico_data,
+        headers={
+            "Authorization": f"Bearer {authenticated_user_token_str}"
+        }
+    )
+    assert create_response_eletronico.status_code == 201
+    order_eletronico = create_response_eletronico.json()
+
+    # Criar um pedido com item livro
+    order_livro_data = {"client_id": test_client.id, "items": [{"product_id": product_livro.id, "quantity": 1}]}
+    create_response_livro = await client.post(
+        "/api/v1/orders/",
+        json=order_livro_data,
+        headers={
+            "Authorization": f"Bearer {authenticated_user_token_str}"
+        }
+    )
+    assert create_response_livro.status_code == 201
+    order_livro = create_response_livro.json()
+
+    # Criar um pedido com itens de ambas as seções (este deve aparecer em ambas as filtragens por seção)
+    order_mista_data = {"client_id": test_client.id, "items": [{"product_id": product_eletronico.id, "quantity": 1}, {"product_id": product_livro.id, "quantity": 1}]}
+    create_response_mista = await client.post(
+        "/api/v1/orders/",
+        json=order_mista_data,
+        headers={
+            "Authorization": f"Bearer {authenticated_user_token_str}"
+        }
+    )
+    assert create_response_mista.status_code == 201
+    order_mista = create_response_mista.json()
+
+    # Listar pedidos filtrando por seção 'Eletrônicos'
+    response_eletronicos = await client.get(
+        "/api/v1/orders/?section=Eletrônicos",
+        headers={
+            "Authorization": f"Bearer {authenticated_user_token_str}"
+        }
+    )
+    assert response_eletronicos.status_code == 200
+    data_eletronicos = response_eletronicos.json()
+
+    assert len(data_eletronicos["orders"]) >= 2 # Deve conter o pedido eletronico e o misto
+    order_ids_eletronicos = [order["id"] for order in data_eletronicos["orders"]]
+    assert order_eletronico["id"] in order_ids_eletronicos
+    assert order_mista["id"] in order_ids_eletronicos
+    assert order_livro["id"] not in order_ids_eletronicos
+
+    # Listar pedidos filtrando por seção 'Livros'
+    response_livros = await client.get(
+        "/api/v1/orders/?section=Livros",
+        headers={
+            "Authorization": f"Bearer {authenticated_user_token_str}"
+        }
+    )
+    assert response_livros.status_code == 200
+    data_livros = response_livros.json()
+
+    assert len(data_livros["orders"]) >= 2 # Deve conter o pedido livro e o misto
+    order_ids_livros = [order["id"] for order in data_livros["orders"]]
+    assert order_livro["id"] in order_ids_livros
+    assert order_mista["id"] in order_ids_livros
+    assert order_eletronico["id"] not in order_ids_livros
+
+# Novo teste para listar pedidos filtrando por período
+@pytest.mark.asyncio
+async def test_list_orders_filter_by_date_range(client: AsyncClient, authenticated_user_token_str: str, test_products: list[Product], test_client: Client, authenticated_user: User):
+    product_data = test_products[0]
+
+    # Criar pedidos com datas diferentes (usando o DB diretamente para controlar created_at)
+    async with TestingSessionLocal() as db:
+        # Pedido na data de início (ou próximo dela)
+        order_early = Order(
+            client_id=test_client.id,
+            created_by_user_id=authenticated_user.id,
+            total=10.0,
+            status="pending",
+            created_at=datetime(2023, 10, 15, 10, 0, 0) # Data dentro do período
+        )
+        db.add(order_early)
+        await db.commit()
+        await db.refresh(order_early)
+        order_early_id = order_early.id # Coletar o ID
+
+        # Pedido na data de fim (ou próximo dela)
+        order_late = Order(
+            client_id=test_client.id,
+            created_by_user_id=authenticated_user.id,
+            total=20.0,
+            status="pending",
+            created_at=datetime(2023, 10, 25, 15, 30, 0) # Data dentro do período
+        )
+        db.add(order_late)
+        await db.commit()
+        await db.refresh(order_late)
+        order_late_id = order_late.id # Coletar o ID
+
+        # Pedido fora do período (antes do start_date)
+        order_before = Order(
+            client_id=test_client.id,
+            created_by_user_id=authenticated_user.id,
+            total=30.0,
+            status="pending",
+            created_at=datetime(2023, 10, 10, 9, 0, 0) # Data antes do período
+        )
+        db.add(order_before)
+        await db.commit()
+        await db.refresh(order_before)
+        order_before_id = order_before.id # Coletar o ID
+
+        # Pedido fora do período (depois do end_date)
+        order_after = Order(
+            client_id=test_client.id,
+            created_by_user_id=authenticated_user.id,
+            total=40.0,
+            status="pending",
+            created_at=datetime(2023, 11, 1, 11, 0, 0) # Data depois do período
+        )
+        db.add(order_after)
+        await db.commit()
+        await db.refresh(order_after)
+        order_after_id = order_after.id # Coletar o ID
+
+    # As asserções usarão os IDs coletados
+    start_date_filter = "2023-10-15T00:00:00"
+    end_date_filter = "2023-10-25T23:59:59"
+
+    # Listar pedidos filtrando pelo período
+    response = await client.get(
+        f"/api/v1/orders/?start_date={start_date_filter}&end_date={end_date_filter}",
+        headers={
+            "Authorization": f"Bearer {authenticated_user_token_str}"
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    # Deve conter os pedidos early e late, mas não before e after
+    order_ids_in_list = [order["id"] for order in data["orders"]]
+    assert order_early_id in order_ids_in_list # Usar o ID coletado
+    assert order_late_id in order_ids_in_list  # Usar o ID coletado
+    assert order_before_id not in order_ids_in_list # Usar o ID coletado
+    assert order_after_id not in order_ids_in_list   # Usar o ID coletado
+
+# Novo teste para combinar múltiplos filtros (ex: client_id e status)
+@pytest.mark.asyncio
+async def test_list_orders_multiple_filters(client: AsyncClient, authenticated_user_token_str: str, test_products: list[Product], test_client: Client, authenticated_user: User):
+    product_data = test_products[0]
+
+    # Criar pedidos com diferentes clientes e status
+    async with TestingSessionLocal() as db:
+        # Criar um segundo cliente para este teste
+        client2_data = ClientCreate(
+            name="Cliente Teste 2",
+            email="cliente2@example.com",
+            phone="11999997777",
+            address={
+                "street": "Rua Teste 2",
+                "number": "456",
+                "complement": "Apto 2",
+                "neighborhood": "Centro",
+                "city": "São Paulo",
+                "state": "SP",
+                "zip_code": "01234567"
+            },
+            cpf="98765432100"
+        )
+        from src.services.client_service import create_client as create_client_service
+        client2 = await create_client_service(db=db, client_data=client2_data)
+        await db.commit()
+        await db.refresh(client2)
+
+        # Pedido 1: Cliente 1, status 'pendente'
+        order1 = Order(
+            client_id=test_client.id,
+            created_by_user_id=authenticated_user.id,
+            total=10.0,
+            status="pendente"
+        )
+        db.add(order1)
+
+        # Pedido 2: Cliente 1, status 'enviado'
+        order2 = Order(
+            client_id=test_client.id,
+            created_by_user_id=authenticated_user.id,
+            total=20.0,
+            status="enviado"
+        )
+        db.add(order2)
+
+        # Pedido 3: Cliente 2, status 'pendente'
+        order3 = Order(
+            client_id=client2.id,
+            created_by_user_id=authenticated_user.id,
+            total=30.0,
+            status="pendente"
+        )
+        db.add(order3)
+
+        # Pedido 4: Cliente 2, status 'enviado'
+        order4 = Order(
+            client_id=client2.id,
+            created_by_user_id=authenticated_user.id,
+            total=40.0,
+            status="enviado"
+        )
+        db.add(order4)
+
+        await db.commit()
+        await db.refresh(order1)
+        await db.refresh(order2)
+        await db.refresh(order3)
+        await db.refresh(order4)
+
+    # Listar pedidos filtrando por client_id (do test_client) e status 'pendente'
+    response = await client.get(
+        f"/api/v1/orders/?client_id={test_client.id}&status=pendente",
+        headers={
+            "Authorization": f"Bearer {authenticated_user_token_str}"
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    assert len(data["orders"]) >= 1 # Deve conter pelo menos o pedido 1 (Cliente 1, pendente)
+    order_ids_in_list = [order["id"] for order in data["orders"]]
+    assert order1.id in order_ids_in_list
+    assert order2.id not in order_ids_in_list
+    assert order3.id not in order_ids_in_list
+    assert order4.id not in order_ids_in_list
+    assert all(order["client_id"] == test_client.id and order["status"] == "pendente" for order in data["orders"] if order["id"] == order1.id) # Verificar se o filtro foi aplicado corretamente no pedido esperado
 
 @pytest.mark.asyncio
 async def test_get_order_by_id(client: AsyncClient, authenticated_user_token_str: str, test_products: list[Product], test_client: Client): # test_products agora retorna dicts
@@ -388,7 +757,7 @@ async def test_update_order(client: AsyncClient, authenticated_user_token_str: s
     created_order = create_response.json()
     order_id = created_order["id"]
 
-    update_data = {"status": "completed"}
+    update_data = {"status": "processando"}
     update_response = await client.put(
         f"/api/v1/orders/{order_id}",
         json=update_data,
@@ -399,11 +768,11 @@ async def test_update_order(client: AsyncClient, authenticated_user_token_str: s
     assert update_response.status_code == 200
     updated_order = update_response.json()
     assert updated_order["id"] == order_id
-    assert updated_order["status"] == "completed"
+    assert updated_order["status"] == "processando"
 
 @pytest.mark.asyncio
 async def test_update_order_not_found(client: AsyncClient, authenticated_user_token_str: str):
-    update_data = {"status": "completed"}
+    update_data = {"status": "processando"}
     response = await client.put(
         "/api/v1/orders/99999",
         json=update_data,
@@ -454,7 +823,7 @@ async def test_update_order_other_user(client: AsyncClient, test_client: Client)
         assert create_response2.status_code == 201
         order_id_user2 = create_response2.json()["id"]
 
-        update_data = {"status": "cancelled"}
+        update_data = {"status": "cancelado"}
         update_response = await client.put(
             f"/api/v1/orders/{order_id_user2}",
             json=update_data,

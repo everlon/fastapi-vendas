@@ -28,7 +28,13 @@ async def get_user_by_email(db: AsyncSession, email: str):
 
 async def create_user(db: AsyncSession, user: UserCreate):
     hashed_password = get_password_hash(user.password)
-    db_user = User(username=user.username, email=user.email, full_name=user.full_name, hashed_password=hashed_password)
+    db_user = User(
+        username=user.username,
+        email=user.email,
+        full_name=user.full_name,
+        hashed_password=hashed_password,
+        is_admin=user.is_admin
+    )
     try:
         db.add(db_user)
         await db.commit()

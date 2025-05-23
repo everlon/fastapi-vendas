@@ -307,10 +307,18 @@ async def update_order_endpoint(
       ]
     }
     ```
-
     """
-    updated_order = await update_order(db=db, order_id=order_id, order_update_data=order_update_data, created_by_user=current_user)
-    return updated_order
+    # Primeiro verifica se o pedido existe e pertence ao usuário
+    order = await get_order_by_id(db=db, order_id=order_id, created_by_user=current_user)
+    if not order:
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Pedido não encontrado")
+
+    # Agora que sabemos que o pedido existe e pertence ao usuário, podemos validar e aplicar as atualizações
+    try:
+        updated_order = await update_order(db=db, order_id=order_id, order_update_data=order_update_data, created_by_user=current_user)
+        return updated_order
+    except HTTPException as e:
+        raise e
 
 @router.delete("/{order_id}", status_code=HTTPStatus.NO_CONTENT)
 async def delete_order_endpoint(

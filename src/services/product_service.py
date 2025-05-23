@@ -17,25 +17,7 @@ from src.schemas.product import (
     ProductUpdate)
 
 
-status_map = {
-    "em estoque": ProductStatusEnum.in_stock,
-    "em reposição": ProductStatusEnum.restocking,
-    "em falta": ProductStatusEnum.out_of_stock,
-}
-
-
-async def map_status(status_str: str) -> ProductStatusEnum:
-    status = status_map.get(status_str)
-
-    if not status:
-        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Status inválido.")
-
-    return status
-
-
 async def create_product(product_data: ProductCreate, db: AsyncSession) -> Product:
-    status = await map_status(product_data.status.value)
-
     result = await db.execute(select(Product).where(Product.barcode == product_data.barcode))
     existing_product = result.scalar_one_or_none()
     if existing_product:
@@ -45,7 +27,7 @@ async def create_product(product_data: ProductCreate, db: AsyncSession) -> Produ
         name = product_data.name,
         description = product_data.description,
         price = product_data.price,
-        status = status,
+        status = product_data.status,
         stock_quantity = product_data.stock_quantity,
         barcode = product_data.barcode,
         section = product_data.section,
@@ -79,8 +61,7 @@ async def list_products(
         ))
 
     if status:
-        status_enum = await map_status(status)
-        query = query.where(Product.status == status_enum)
+        query = query.where(Product.status == status)
 
     if section:
         query = query.where(Product.section.ilike(f"%{section}%"))

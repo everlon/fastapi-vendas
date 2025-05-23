@@ -1,6 +1,6 @@
 from http import HTTPStatus
 from typing_extensions import List
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Path, Body
 
 from sqlalchemy.orm import Session
 from database import get_db
@@ -19,240 +19,561 @@ from src.schemas.client import (
     PaginatedClientResponse
 )
 
-from typing import Annotated
-from auth import User, get_current_active_user
+from typing import Annotated, Optional
+from auth import User, get_current_active_user, get_current_admin_user
 
 
 router = APIRouter()
 
 
 @router.post("/", status_code=HTTPStatus.CREATED, response_model=ClientResponse)
-async def create_client_endpoint(client: ClientCreate, db: Session = Depends(get_db), user: User = Depends(get_current_active_user)):
+async def create_client_endpoint(client: ClientCreate, db: Session = Depends(get_db), user: User = Depends(get_current_admin_user)):
     """
     **Criação de um novo Cliente**
 
     Este endpoint permite criar um novo cliente na base de dados.
-    É necessário que o usuário esteja autenticado para realizar esta operação.
+    É necessário que o usuário esteja autenticado e tenha permissões de administrador.
 
     **Corpo da Requisição (`ClientCreate`):**
-    - `name`: Nome completo do cliente (string, obrigatório).
-    - `email`: Endereço de e-mail do cliente (string, obrigatório, deve ser único).
-    - `phone`: Número de telefone do cliente (string, opcional).
-    - `address`: Endereço completo do cliente (string, opcional).
+    - `name`: Nome completo do cliente (string, obrigatório, mínimo 3 caracteres).
+    - `email`: Endereço de e-mail do cliente (string, obrigatório, deve ser único, formato válido de email).
+    - `phone`: Número de telefone do cliente (string, opcional, formato: (XX) XXXXX-XXXX).
+    - `cpf`: CPF do cliente (string, obrigatório, deve ser único, formato: XXXXXXXXXXX).
+    - `address`: Objeto contendo o endereço completo (obrigatório):
+      - `street`: Nome da rua (string, obrigatório)
+      - `number`: Número do endereço (string, obrigatório)
+      - `complement`: Complemento do endereço (string, opcional)
+      - `neighborhood`: Bairro (string, obrigatório)
+      - `city`: Cidade (string, obrigatório)
+      - `state`: Estado (string, obrigatório, 2 caracteres)
+      - `zip_code`: CEP (string, obrigatório, formato: XXXXXXXX)
 
     **Regras de Negócio:**
     - O campo `email` deve ser único na base de dados.
-    - Apenas usuários autenticados podem criar clientes.
+    - O campo `cpf` deve ser único na base de dados e válido.
+    - Apenas usuários autenticados com permissões de administrador podem criar clientes.
+    - O CPF é validado quanto à sua estrutura e dígitos verificadores.
 
     **Casos de Uso:**
     - Registrar um novo cliente no sistema.
-    - Utilizado por administradores ou usuários com permissão para adicionar novos clientes.
+    - Utilizado por administradores para adicionar novos clientes.
+    - Cadastro inicial de clientes para permitir a realização de pedidos.
 
     **Exemplo de Requisição:**
     ```json
     {
-      "name": "Cliente Exemplo",
-      "email": "cliente.exemplo@email.com",
-      "phone": "+55 11 98765-4321",
-      "address": "Rua Exemplo, 123, Bairro - Cidade - UF"
+      "name": "João da Silva",
+      "email": "joao.silva@email.com",
+      "phone": "(11) 98765-4321",
+      "cpf": "52998224725",
+      "address": {
+        "street": "Rua das Flores",
+        "number": "123",
+        "complement": "Apto 45",
+        "neighborhood": "Centro",
+        "city": "São Paulo",
+        "state": "SP",
+        "zip_code": "01234567"
+      }
     }
     ```
 
-    **Exemplo de Resposta (Cliente Criado):**
+    **Exemplo de Resposta (Cliente Criado - 201):**
     ```json
     {
       "id": 1,
-      "name": "Cliente Exemplo",
-      "email": "cliente.exemplo@email.com",
-      "phone": "+55 11 98765-4321",
-      "address": "Rua Exemplo, 123, Bairro - Cidade - UF",
-      "created_at": "2023-01-01T10:00:00.000Z",
-      "updated_at": "2023-01-01T10:00:00.000Z"
+      "name": "João da Silva",
+      "email": "joao.silva@email.com",
+      "phone": "(11) 98765-4321",
+      "cpf": "52998224725",
+      "address": {
+        "street": "Rua das Flores",
+        "number": "123",
+        "complement": "Apto 45",
+        "neighborhood": "Centro",
+        "city": "São Paulo",
+        "state": "SP",
+        "zip_code": "01234567"
+      },
+      "created_at": "2024-03-20T10:00:00.000Z",
+      "updated_at": "2024-03-20T10:00:00.000Z"
+    }
+    ```
+
+    **Códigos de Erro:**
+    - `400 Bad Request`: 
+      - Email já cadastrado
+      - CPF já cadastrado
+      - CPF inválido
+      - Dados de endereço incompletos
+      - Formato de email inválido
+      - Formato de telefone inválido
+      - Formato de CEP inválido
+    - `401 Unauthorized`: Token de autenticação não fornecido ou inválido
+    - `403 Forbidden`: Usuário não tem permissões de administrador
+
+    **Exemplo de Resposta de Erro (400 - Email Duplicado):**
+    ```json
+    {
+      "detail": "Email já cadastrado"
+    }
+    ```
+
+    **Exemplo de Resposta de Erro (400 - CPF Inválido):**
+    ```json
+    {
+      "detail": "CPF inválido"
+    }
+    ```
+
+    **Exemplo de Resposta de Erro (401 - Não Autenticado):**
+    ```json
+    {
+      "detail": "Não foi possível validar as credenciais",
+      "headers": {
+        "WWW-Authenticate": "Bearer"
+      }
+    }
+    ```
+
+    **Exemplo de Resposta de Erro (403 - Sem Permissão):**
+    ```json
+    {
+      "detail": "Não autorizado: apenas administradores podem realizar esta ação."
     }
     ```
     """
     return await create_client(client, db)
 
 
-@router.get("/", status_code=HTTPStatus.OK, response_model=PaginatedClientResponse)
+@router.get("/", response_model=List[ClientResponse])
 async def list_clients_endpoint(
+    skip: int = Query(0, description="Número de registros para pular (paginação)"),
+    limit: int = Query(10, description="Número máximo de registros por página"),
+    search: Optional[str] = Query(None, description="Termo de busca para filtrar clientes por nome, email ou CPF"),
     db: Session = Depends(get_db),
-    page: int = Query(1, ge=1, description="Número da página"),
-    page_size: int = Query(10, ge=1, le=100, description="Número de itens por página"),
-    search: str = Query(None, description="Filtrar por busca em nome ou email do cliente"),
-    user: User = Depends(get_current_active_user)):
+    user: User = Depends(get_current_active_user)
+):
     """
-    **Listagem e Busca de Clientes (Paginada)**
+    **Listagem de Clientes**
 
-    Este endpoint permite listar clientes com opções de busca e paginação.
-    É necessário que o usuário esteja autenticado para acessar esta lista.
+    Este endpoint permite listar todos os clientes cadastrados no sistema.
+    É necessário que o usuário esteja autenticado para acessar esta funcionalidade.
 
-    **Parâmetros de Query:**
-    - `page`: Número da página (padrão: 1, mínimo: 1).
-    - `page_size`: Número de itens por página (padrão: 10, mínimo: 1, máximo: 100).
-    - `search`: Termo para buscar no nome ou e-mail do cliente (opcional).
+    **Parâmetros de Consulta:**
+    - `skip`: Número de registros para pular (paginação, padrão: 0)
+    - `limit`: Número máximo de registros por página (padrão: 10, máximo: 100)
+    - `search`: Termo de busca opcional para filtrar clientes por:
+      - Nome (busca parcial, case-insensitive)
+      - Email (busca exata)
+      - CPF (busca exata)
 
     **Regras de Negócio:**
-    - A paginação é obrigatória.
-    - A busca por termo (`search`) procura tanto no nome quanto no e-mail do cliente e é case-insensitive.
-    - Apenas usuários autenticados podem listar clientes.
+    - A listagem é paginada para melhor performance
+    - O parâmetro `limit` não pode exceder 100 registros por página
+    - A busca é case-insensitive para o nome do cliente
+    - A busca por email e CPF é exata
+    - Apenas usuários autenticados podem listar clientes
 
     **Casos de Uso:**
-    - Exibir a lista de clientes para usuários com permissão (ex: administradores).
-    - Permitir a busca rápida de clientes por nome ou e-mail.
-    - Implementar a navegação paginada na interface de gerenciamento de clientes.
-
-    **Exemplo de Resposta:**
-    ```json
-    {
-      "clients": [
-        {
-          "id": 1,
-          "name": "Cliente Exemplo",
-          "email": "cliente.exemplo@email.com",
-          "phone": "+55 11 98765-4321",
-          "address": "Rua Exemplo, 123, Bairro - Cidade - UF",
-          "created_at": "2023-01-01T10:00:00.000Z",
-          "updated_at": "2023-01-01T10:00:00.000Z"
-        }
-      ],
-      "total": 50,
-      "page": 1,
-      "page_size": 10,
-      "total_pages": 5
-    }
-    ```
-    """
-    clients, total = await list_clients(
-        db,
-        page=page,
-        page_size=page_size,
-        search=search)
-
-    response_data = {
-        "clients": clients,
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": (total + page_size - 1) // page_size
-    }
-
-    return response_data
-
-
-@router.get("/{id}", status_code=HTTPStatus.OK, response_model=ClientResponse)
-async def get_client_by_id_endpoint(id: int, db: Session = Depends(get_db), user: User = Depends(get_current_active_user)):
-    """
-    **Obtenção de Cliente por ID**
-
-    Este endpoint permite obter os detalhes completos de um cliente específico utilizando seu ID.
-    É necessário que o usuário esteja autenticado para realizar esta operação.
-
-    **Parâmetros de Path:**
-    - `id`: O ID único do cliente a ser buscado (integer).
-
-    **Regras de Negócio:**
-    - O ID fornecido deve corresponder a um cliente existente na base de dados.
-    - Apenas usuários autenticados podem obter detalhes de clientes.
-    - Retorna status 404 se o cliente não for encontrado.
-
-    **Casos de Uso:**
-    - Exibir a página de detalhes de um cliente específico.
-    - Obter informações de um cliente para edição ou visualização.
-
-    **Exemplo de Resposta:**
-    ```json
-    {
-      "id": 1,
-      "name": "Cliente Exemplo",
-      "email": "cliente.exemplo@email.com",
-      "phone": "+55 11 98765-4321",
-      "address": "Rua Exemplo, 123, Bairro - Cidade - UF",
-      "created_at": "2023-01-01T10:00:00.000Z",
-      "updated_at": "2023-01-01T10:00:00.000Z"
-    }
-    ```
-    """
-    client = await get_client_by_id(id, db)
-
-    if not client:
-        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Cliente não encontrado")
-
-    return client
-
-
-@router.put("/{id}", status_code=HTTPStatus.OK, response_model=ClientResponse)
-async def update_client_endpoint(id: int, client_data: ClientUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_active_user)):
-    """
-    **Atualização de Cliente por ID**
-
-    Este endpoint permite atualizar parcialmente ou totalmente os dados de um cliente existente utilizando seu ID.
-    É necessário que o usuário esteja autenticado para realizar esta operação.
-
-    **Parâmetros de Path:**
-    - `id`: O ID único do cliente a ser atualizado (integer).
-
-    **Corpo da Requisição (`ClientUpdate`):**
-    Permite enviar apenas os campos que deseja atualizar. Os campos opcionais incluem `name`, `email`, `phone`, e `address`.
-
-    **Regras de Negócio:**
-    - O ID fornecido deve corresponder a um cliente existente na base de dados.
-    - O campo `email`, se fornecido e diferente do atual, deve ser único na base de dados.
-    - Apenas usuários autenticados podem atualizar clientes.
-    - Retorna status 404 se o cliente não for encontrado.
-
-    **Casos de Uso:**
-    - Corrigir informações de cadastro de um cliente (ex: nome, endereço).
-    - Atualizar o contato telefônico ou e-mail de um cliente.
+    - Visualização da lista completa de clientes
+    - Busca de clientes específicos
+    - Navegação paginada através dos registros
+    - Filtragem de clientes por diferentes critérios
 
     **Exemplo de Requisição:**
+    ```
+    GET /clients/?skip=0&limit=10&search=joao
+    ```
+
+    **Exemplo de Resposta (200 - Sucesso):**
     ```json
     {
-      "phone": "+55 11 99887-7665",
-      "address": "Nova Rua, 456, Outro Bairro - Outra Cidade - MG"
+      "items": [
+        {
+          "id": 1,
+          "name": "João da Silva",
+          "email": "joao.silva@email.com",
+          "phone": "(11) 98765-4321",
+          "cpf": "52998224725",
+          "address": {
+            "street": "Rua das Flores",
+            "number": "123",
+            "complement": "Apto 45",
+            "neighborhood": "Centro",
+            "city": "São Paulo",
+            "state": "SP",
+            "zip_code": "01234567"
+          },
+          "created_at": "2024-03-20T10:00:00.000Z",
+          "updated_at": "2024-03-20T10:00:00.000Z"
+        }
+      ],
+      "total": 1,
+      "page": 1,
+      "size": 10,
+      "pages": 1
     }
     ```
 
-    **Exemplo de Resposta (Cliente Atualizado):**
+    **Exemplo de Resposta (200 - Lista Vazia):**
+    ```json
+    {
+      "items": [],
+      "total": 0,
+      "page": 1,
+      "size": 10,
+      "pages": 0
+    }
+    ```
+
+    **Códigos de Erro:**
+    - `400 Bad Request`: 
+      - Valor inválido para o parâmetro `limit` (deve ser entre 1 e 100)
+      - Valor inválido para o parâmetro `skip` (deve ser >= 0)
+    - `401 Unauthorized`: Token de autenticação não fornecido ou inválido
+
+    **Exemplo de Resposta de Erro (400 - Parâmetro Inválido):**
+    ```json
+    {
+      "detail": "O parâmetro 'limit' deve estar entre 1 e 100"
+    }
+    ```
+
+    **Exemplo de Resposta de Erro (401 - Não Autenticado):**
+    ```json
+    {
+      "detail": "Não foi possível validar as credenciais",
+      "headers": {
+        "WWW-Authenticate": "Bearer"
+      }
+    }
+    ```
+
+    **Notas:**
+    - A paginação começa em 0 (zero)
+    - O campo `total` representa o número total de registros encontrados
+    - O campo `pages` representa o número total de páginas disponíveis
+    - O campo `page` representa a página atual
+    - O campo `size` representa o tamanho da página atual
+    """
+    return await list_clients(skip, limit, search, db)
+
+
+@router.get("/{client_id}", response_model=ClientResponse)
+async def get_client_by_id_endpoint(
+    client_id: int = Path(..., description="ID do cliente a ser buscado", ge=1),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_active_user)
+):
+    """
+    **Busca de Cliente por ID**
+
+    Este endpoint permite buscar os detalhes de um cliente específico através do seu ID.
+    É necessário que o usuário esteja autenticado para acessar esta funcionalidade.
+
+    **Parâmetros de Caminho:**
+    - `client_id`: ID do cliente (inteiro, obrigatório, maior que zero)
+
+    **Regras de Negócio:**
+    - O ID do cliente deve existir na base de dados
+    - Apenas usuários autenticados podem buscar clientes
+    - O ID deve ser um número inteiro positivo
+
+    **Casos de Uso:**
+    - Visualização detalhada de um cliente específico
+    - Verificação de dados do cliente antes de operações
+    - Consulta rápida de informações do cliente
+
+    **Exemplo de Requisição:**
+    ```
+    GET /clients/1
+    ```
+
+    **Exemplo de Resposta (200 - Sucesso):**
     ```json
     {
       "id": 1,
-      "name": "Cliente Exemplo",
-      "email": "cliente.exemplo@email.com",
-      "phone": "+55 11 99887-7665",
-      "address": "Nova Rua, 456, Outro Bairro - Outra Cidade - MG",
-      "created_at": "2023-01-01T10:00:00.000Z",
-      "updated_at": "2023-01-01T10:20:00.000Z" # Data de atualização mudaria
+      "name": "João da Silva",
+      "email": "joao.silva@email.com",
+      "phone": "(11) 98765-4321",
+      "cpf": "52998224725",
+      "address": {
+        "street": "Rua das Flores",
+        "number": "123",
+        "complement": "Apto 45",
+        "neighborhood": "Centro",
+        "city": "São Paulo",
+        "state": "SP",
+        "zip_code": "01234567"
+      },
+      "created_at": "2024-03-20T10:00:00.000Z",
+      "updated_at": "2024-03-20T10:00:00.000Z"
     }
     ```
+
+    **Códigos de Erro:**
+    - `400 Bad Request`: ID do cliente inválido (menor que 1)
+    - `401 Unauthorized`: Token de autenticação não fornecido ou inválido
+    - `404 Not Found`: Cliente não encontrado
+
+    **Exemplo de Resposta de Erro (400 - ID Inválido):**
+    ```json
+    {
+      "detail": "O ID do cliente deve ser maior que zero"
+    }
+    ```
+
+    **Exemplo de Resposta de Erro (401 - Não Autenticado):**
+    ```json
+    {
+      "detail": "Não foi possível validar as credenciais",
+      "headers": {
+        "WWW-Authenticate": "Bearer"
+      }
+    }
+    ```
+
+    **Exemplo de Resposta de Erro (404 - Cliente Não Encontrado):**
+    ```json
+    {
+      "detail": "Cliente não encontrado"
+    }
+    ```
+
+    **Notas:**
+    - O ID do cliente é um número sequencial gerado automaticamente
+    - Todos os campos do cliente são retornados na resposta
+    - As datas são retornadas no formato ISO 8601
     """
-    updated_client = await update_client(id, client_data, db)
-
-    return updated_client
+    return await get_client_by_id(client_id, db)
 
 
-@router.delete("/{id}", status_code=HTTPStatus.NO_CONTENT)
-async def delete_client_endpoint(id: int, db: Session = Depends(get_db), user: User = Depends(get_current_active_user)):
+@router.put("/{client_id}", response_model=ClientResponse)
+async def update_client_endpoint(
+    client_id: int = Path(..., description="ID do cliente a ser atualizado", ge=1),
+    client_update: ClientUpdate = Body(..., description="Dados do cliente a serem atualizados"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_admin_user)
+):
     """
-    **Exclusão de Cliente por ID**
+    **Atualização de Cliente**
 
-    Este endpoint permite excluir um cliente existente utilizando seu ID.
-    É necessário que o usuário esteja autenticado para realizar esta operação.
+    Este endpoint permite atualizar os dados de um cliente existente.
+    É necessário que o usuário esteja autenticado e tenha permissões de administrador.
 
-    **Parâmetros de Path:**
-    - `id`: O ID único do cliente a ser excluído (integer).
+    **Parâmetros de Caminho:**
+    - `client_id`: ID do cliente a ser atualizado (inteiro, obrigatório, maior que zero)
+
+    **Corpo da Requisição (`ClientUpdate`):**
+    - `name`: Nome completo do cliente (string, opcional, mínimo 3 caracteres)
+    - `email`: Endereço de e-mail do cliente (string, opcional, deve ser único, formato válido de email)
+    - `phone`: Número de telefone do cliente (string, opcional, formato: (XX) XXXXX-XXXX)
+    - `address`: Objeto contendo o endereço completo (opcional):
+      - `street`: Nome da rua (string, opcional)
+      - `number`: Número do endereço (string, opcional)
+      - `complement`: Complemento do endereço (string, opcional)
+      - `neighborhood`: Bairro (string, opcional)
+      - `city`: Cidade (string, opcional)
+      - `state`: Estado (string, opcional, 2 caracteres)
+      - `zip_code`: CEP (string, opcional, formato: XXXXXXXX)
 
     **Regras de Negócio:**
-    - O ID fornecido deve corresponder a um cliente existente na base de dados.
-    - Apenas usuários autenticados podem excluir clientes.
-    - Retorna status 404 se o cliente não for encontrado.
+    - O ID do cliente deve existir na base de dados
+    - Apenas usuários autenticados com permissões de administrador podem atualizar clientes
+    - O campo `email` deve ser único na base de dados (se fornecido)
+    - O CPF não pode ser alterado após a criação do cliente
+    - Todos os campos são opcionais na atualização
+    - Apenas os campos fornecidos serão atualizados
 
     **Casos de Uso:**
-    - Remover o cadastro de um cliente que não é mais relevante ou que foi cadastrado incorretamente.
+    - Atualização de dados cadastrais do cliente
+    - Correção de informações incorretas
+    - Atualização de endereço do cliente
+    - Alteração de contato (telefone/email)
 
-    **Resposta de Sucesso:**
-    - Retorna status 204 No Content se a exclusão for bem-sucedida.
+    **Exemplo de Requisição:**
+    ```
+    PUT /clients/1
+    ```
+    ```json
+    {
+      "name": "João Silva Atualizado",
+      "phone": "(11) 91234-5678",
+      "address": {
+        "street": "Avenida Principal",
+        "number": "456",
+        "complement": "Sala 789",
+        "neighborhood": "Jardim",
+        "city": "São Paulo",
+        "state": "SP",
+        "zip_code": "04567890"
+      }
+    }
+    ```
+
+    **Exemplo de Resposta (200 - Sucesso):**
+    ```json
+    {
+      "id": 1,
+      "name": "João Silva Atualizado",
+      "email": "joao.silva@email.com",
+      "phone": "(11) 91234-5678",
+      "cpf": "52998224725",
+      "address": {
+        "street": "Avenida Principal",
+        "number": "456",
+        "complement": "Sala 789",
+        "neighborhood": "Jardim",
+        "city": "São Paulo",
+        "state": "SP",
+        "zip_code": "04567890"
+      },
+      "created_at": "2024-03-20T10:00:00.000Z",
+      "updated_at": "2024-03-20T11:00:00.000Z"
+    }
+    ```
+
+    **Códigos de Erro:**
+    - `400 Bad Request`: 
+      - Email já cadastrado (se fornecido)
+      - Formato de email inválido
+      - Formato de telefone inválido
+      - Formato de CEP inválido
+      - ID do cliente inválido (menor que 1)
+    - `401 Unauthorized`: Token de autenticação não fornecido ou inválido
+    - `403 Forbidden`: Usuário não tem permissões de administrador
+    - `404 Not Found`: Cliente não encontrado
+
+    **Exemplo de Resposta de Erro (400 - Email Duplicado):**
+    ```json
+    {
+      "detail": "Email já cadastrado"
+    }
+    ```
+
+    **Exemplo de Resposta de Erro (401 - Não Autenticado):**
+    ```json
+    {
+      "detail": "Não foi possível validar as credenciais",
+      "headers": {
+        "WWW-Authenticate": "Bearer"
+      }
+    }
+    ```
+
+    **Exemplo de Resposta de Erro (403 - Sem Permissão):**
+    ```json
+    {
+      "detail": "Não autorizado: apenas administradores podem realizar esta ação."
+    }
+    ```
+
+    **Exemplo de Resposta de Erro (404 - Cliente Não Encontrado):**
+    ```json
+    {
+      "detail": "Cliente não encontrado"
+    }
+    ```
+
+    **Notas:**
+    - Apenas os campos fornecidos na requisição serão atualizados
+    - O campo `updated_at` é atualizado automaticamente
+    - O campo `cpf` não pode ser alterado após a criação do cliente
+    - As datas são retornadas no formato ISO 8601
     """
-    await delete_client(id, db)
+    return await update_client(client_id, client_update, db)
+
+
+@router.delete("/{client_id}", status_code=HTTPStatus.NO_CONTENT)
+async def delete_client_endpoint(
+    client_id: int = Path(..., description="ID do cliente a ser excluído", ge=1),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_admin_user)
+):
+    """
+    **Exclusão de Cliente**
+
+    Este endpoint permite excluir um cliente existente do sistema.
+    É necessário que o usuário esteja autenticado e tenha permissões de administrador.
+
+    **Parâmetros de Caminho:**
+    - `client_id`: ID do cliente a ser excluído (inteiro, obrigatório, maior que zero)
+
+    **Regras de Negócio:**
+    - O ID do cliente deve existir na base de dados
+    - Apenas usuários autenticados com permissões de administrador podem excluir clientes
+    - A exclusão é permanente e não pode ser desfeita
+    - Clientes com pedidos associados não podem ser excluídos
+    - O sistema verifica se existem pedidos antes de permitir a exclusão
+
+    **Casos de Uso:**
+    - Remoção de clientes duplicados
+    - Exclusão de clientes inativos
+    - Limpeza de cadastros inválidos
+    - Remoção de clientes que solicitaram exclusão de dados
+
+    **Exemplo de Requisição:**
+    ```
+    DELETE /clients/1
+    ```
+
+    **Exemplo de Resposta (204 - Sucesso):**
+    ```
+    [Sem corpo de resposta]
+    ```
+
+    **Códigos de Erro:**
+    - `400 Bad Request`: ID do cliente inválido (menor que 1)
+    - `401 Unauthorized`: Token de autenticação não fornecido ou inválido
+    - `403 Forbidden`: Usuário não tem permissões de administrador
+    - `404 Not Found`: Cliente não encontrado
+    - `409 Conflict`: Cliente possui pedidos associados
+
+    **Exemplo de Resposta de Erro (400 - ID Inválido):**
+    ```json
+    {
+      "detail": "O ID do cliente deve ser maior que zero"
+    }
+    ```
+
+    **Exemplo de Resposta de Erro (401 - Não Autenticado):**
+    ```json
+    {
+      "detail": "Não foi possível validar as credenciais",
+      "headers": {
+        "WWW-Authenticate": "Bearer"
+      }
+    }
+    ```
+
+    **Exemplo de Resposta de Erro (403 - Sem Permissão):**
+    ```json
+    {
+      "detail": "Não autorizado: apenas administradores podem realizar esta ação."
+    }
+    ```
+
+    **Exemplo de Resposta de Erro (404 - Cliente Não Encontrado):**
+    ```json
+    {
+      "detail": "Cliente não encontrado"
+    }
+    ```
+
+    **Exemplo de Resposta de Erro (409 - Cliente com Pedidos):**
+    ```json
+    {
+      "detail": "Não é possível excluir o cliente pois existem pedidos associados a ele"
+    }
+    ```
+
+    **Notas:**
+    - A exclusão é permanente e não pode ser desfeita
+    - O sistema verifica automaticamente se existem pedidos associados
+    - Recomenda-se fazer backup dos dados antes de excluir clientes
+    - A exclusão de um cliente não afeta os pedidos existentes
+    """
+    await delete_client(client_id, db)
 
     return True

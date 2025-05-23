@@ -1,6 +1,7 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from src.schemas.order import OrderStatusEnum
 
 from database import Base
 
@@ -11,7 +12,7 @@ class Order(Base):
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
     created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     total = Column(Float, nullable=False)
-    status = Column(String, default="pending")
+    status = Column(Enum(OrderStatusEnum), default=OrderStatusEnum.pending)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, onupdate=func.now())
 

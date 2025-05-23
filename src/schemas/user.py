@@ -12,6 +12,7 @@ class UserBase(BaseModel):
     email: Optional[str] = Field(None, description="Endereço de e-mail do usuário.", example="john.doe@example.com")
     full_name: Optional[str] = Field(None, description="Nome completo do usuário.", example="John Doe")
     disabled: Optional[bool] = Field(False, description="Indica se a conta do usuário está desativada.", example=False)
+    is_admin: Optional[bool] = Field(False, description="Indica se o usuário é administrador.", example=False)
 
 
 class UserCreate(UserBase):

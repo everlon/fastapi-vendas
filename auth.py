@@ -86,3 +86,11 @@ async def get_current_active_user(current_user: Annotated[User, Depends(get_curr
             status_code=status.HTTP_400_BAD_REQUEST, detail="Usuário inativo"
         )
     return current_user
+
+async def get_current_admin_user(current_user: Annotated[User, Depends(get_current_active_user)]) -> User:
+    if not getattr(current_user, 'is_admin', False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Não autorizado: apenas administradores podem realizar esta ação."
+        )
+    return current_user

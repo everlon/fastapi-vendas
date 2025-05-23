@@ -193,7 +193,8 @@ async def get_order_by_id(db: AsyncSession, order_id: int, created_by_user: User
 
 async def update_order(db: AsyncSession, order_id: int, order_update_data: OrderUpdate, created_by_user: UserModel):
     """
-    Atualiza um pedido existente na base de dados pelo seu ID, verificando se ele foi criado pelo usuário autenticado.
+    Atualiza um pedido existente na base de dados pelo seu ID.
+    A verificação de permissão (se o pedido pertence ao usuário) já foi feita no endpoint.
 
     Permite a atualização parcial dos campos do pedido com base nos dados fornecidos.
     Carrega os relacionamentos client e created_by_user após a atualização.
@@ -208,14 +209,15 @@ async def update_order(db: AsyncSession, order_id: int, order_update_data: Order
         A instância do pedido atualizado com seus itens carregados.
 
     Raises:
-        HTTPException: Se o pedido com o ID fornecido não for encontrado (404) OU se o pedido não foi criado pelo usuário autenticado (404 - para evitar enumerar IDs).
+        HTTPException: Se houver algum erro durante a atualização.
     """
-    # Reutiliza get_order_by_id para buscar o pedido e já aplicar a verificação de created_by_user
-    order = await get_order_by_id(db, order_id, created_by_user) 
+    # Buscar o pedido diretamente, já que a verificação de permissão foi feita no endpoint
+    result = await db.execute(select(Order).where(Order.id == order_id).options(selectinload(Order.items), selectinload(Order.client), selectinload(Order.created_by_user)))
+    order = result.scalar_one_or_none()
     if not order:
-        # get_order_by_id já retorna None se não encontrar ou não pertencer ao usuário
         raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Pedido não encontrado")
 
+    # Aplicar as atualizações
     update_data = order_update_data.model_dump(exclude_unset=True)
 
     for key, value in update_data.items():
@@ -225,8 +227,8 @@ async def update_order(db: AsyncSession, order_id: int, order_update_data: Order
     await db.commit()
     await db.refresh(order)
 
-    # Carregar relacionamentos após o refresh, se necessário (get_order_by_id já faz isso, mas garantindo)
-    order = await get_order_by_id(db, order_id, created_by_user) # Recarrega para garantir relacionamentos carregados
+    # Carregar relacionamentos após o refresh
+    order = await get_order_by_id(db, order_id, created_by_user)
 
     return order
 
