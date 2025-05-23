@@ -17,7 +17,6 @@ from src.schemas.client import (
 
 
 async def create_client(client_data: ClientCreate, db: AsyncSession) -> Client:
-    # Verifica unicidade do email
     result = await db.execute(select(Client).where(Client.email == client_data.email))
     existing_client = result.scalar_one_or_none()
     if existing_client:
@@ -75,7 +74,6 @@ async def update_client(id: int, client_data: ClientUpdate, db: AsyncSession) ->
     if client_data.name is not None:
         db_client.name = client_data.name
     if client_data.email is not None and client_data.email != db_client.email:
-         # Verifica unicidade do email (agora assíncrono)
         result_unique = await db.execute(select(Client).where(Client.email == client_data.email, Client.id != id))
         existing_client_unique = result_unique.scalar_one_or_none()
         if existing_client_unique:

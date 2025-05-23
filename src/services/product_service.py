@@ -36,7 +36,6 @@ async def map_status(status_str: str) -> ProductStatusEnum:
 async def create_product(product_data: ProductCreate, db: AsyncSession) -> Product:
     status = await map_status(product_data.status.value)
 
-    # Verifica unicidade do código de barras
     result = await db.execute(select(Product).where(Product.barcode == product_data.barcode))
     existing_product = result.scalar_one_or_none()
     if existing_product:
@@ -130,7 +129,6 @@ async def update_product(id: int, product_data: ProductUpdate, db: AsyncSession)
     if product_data.stock_quantity is not None:
         db_product.stock_quantity = product_data.stock_quantity
     if product_data.barcode is not None and product_data.barcode != db_product.barcode:
-        # Verifica unicidade do código de barras (agora assíncrono)
         result_unique = await db.execute(select(Product).where(Product.barcode == product_data.barcode, Product.id != id))
         existing_product_unique = result_unique.scalar_one_or_none()
         if existing_product_unique:

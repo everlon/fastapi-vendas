@@ -1,11 +1,10 @@
 from fastapi import FastAPI, Depends
 
-# from database import Base, engine
-
 from src.routers import product_controller
 from src.routers import client_controller
 from src.routers import user_controller
 from src.routers import order_controller
+from src.routers import auth_controller
 
 from auth import get_current_active_user
 
@@ -60,4 +59,10 @@ app.include_router(
     user_controller.router,
     prefix=f"{version_prefix}/users",
     tags=["users"]
+)
+
+app.include_router(
+    auth_controller.router,
+    prefix=f"{version_prefix}/auth",
+    tags=["auth"]
 )

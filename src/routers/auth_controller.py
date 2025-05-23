@@ -16,7 +16,38 @@ router = APIRouter()
 @router.post("/token", response_model=Token)
 async def login_for_access_token(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: AsyncSession = Depends(get_db)):
     """
-    Endpoit para logar com usuário e senha e obter retorno de uma chave de acesso (token).
+    **Obtenção de Token de Acesso (Login)**
+
+    Este endpoint permite que um usuário se autentique fornecendo seu nome de usuário e senha
+    e, em caso de sucesso, receba um token de acesso JWT.
+
+    **Corpo da Requisição (form-data):**
+    - `username`: Nome de usuário do usuário (string, obrigatório).
+    - `password`: Senha do usuário (string, obrigatório).
+
+    **Regras de Negócio:**
+    - O nome de usuário e a senha devem corresponder a um usuário ativo na base de dados.
+    - O token de acesso gerado tem um tempo de expiração definido (atualmente 30 minutos).
+    - Retorna status 401 Unauthorized se as credenciais forem inválidas.
+
+    **Casos de Uso:**
+    - Autenticar um usuário ao fazer login na aplicação.
+    - Obter um token de acesso para ser usado em requisições subsequentes a endpoints protegidos.
+
+    **Exemplo de Requisição (usando cURL):**
+    ```bash
+    curl -X POST \
+      http://localhost:8000/api/v1/auth/token \
+      -d "username=testuser&password=securepassword"
+    ```
+
+    **Exemplo de Resposta (Token de Acesso):**
+    ```json
+    {
+      "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "token_type": "bearer"
+    }
+    ```
     """
     user = await authenticate_user(db, form_data.username, form_data.password)
 
@@ -33,13 +64,3 @@ async def login_for_access_token(form_data: Annotated[OAuth2PasswordRequestForm,
     )
 
     return {"access_token": access_token, "token_type": "bearer"}
-
-@router.get("/me", response_model=UserSchema)
-async def read_users_me(
-    current_user: Annotated[UserSchema, Depends(get_current_active_user)],
-):
-    """
-    Neste endpoint você obterá as informações do usuário da chave de acesso em vigor.
-    """
-
-    return current_user
