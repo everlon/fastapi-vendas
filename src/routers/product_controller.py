@@ -3,7 +3,7 @@ from typing_extensions import List
 from fastapi import APIRouter, Depends, HTTPException, Query, Body, Path
 # from fastapi.encoders import jsonable_encoder
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 
 from src.services.product_service import (
@@ -31,7 +31,7 @@ router = APIRouter()
 @router.post("/", status_code=HTTPStatus.CREATED, response_model=ProductResponse)
 async def create_product_endpoint(
     product: ProductCreate = Body(..., description="Dados do produto a ser criado"),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_admin_user)
 ):
     """
@@ -158,16 +158,16 @@ async def create_product_endpoint(
     return await create_product(product, db)
 
 
-@router.get("/", response_model=List[ProductResponse])
+@router.get("/", response_model=PaginatedProductResponse)
 async def list_products_endpoint(
-    skip: int = Query(0, description="Número de registros para pular (paginação)"),
-    limit: int = Query(10, description="Número máximo de registros por página"),
-    search: Optional[str] = Query(None, description="Termo de busca para filtrar produtos por nome, descrição ou código de barras"),
-    category: Optional[str] = Query(None, description="Filtrar produtos por categoria"),
-    status: Optional[str] = Query(None, description="Filtrar produtos por status (active, inactive, discontinued)"),
-    min_price: Optional[float] = Query(None, description="Filtrar produtos com preço maior ou igual ao valor informado"),
-    max_price: Optional[float] = Query(None, description="Filtrar produtos com preço menor ou igual ao valor informado"),
-    db: Session = Depends(get_db),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
+    search: Optional[str] = None,
+    section: Optional[str] = Query(None),
+    status: Optional[str] = None,
+    min_price: Optional[float] = Query(None, ge=0),
+    max_price: Optional[float] = Query(None, ge=0),
+    db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_active_user)
 ):
     """
@@ -179,11 +179,8 @@ async def list_products_endpoint(
     **Parâmetros de Consulta:**
     - `skip`: Número de registros para pular (paginação, padrão: 0)
     - `limit`: Número máximo de registros por página (padrão: 10, máximo: 100)
-    - `search`: Termo de busca opcional para filtrar produtos por:
-      - Nome (busca parcial, case-insensitive)
-      - Descrição (busca parcial, case-insensitive)
-      - Código de barras (busca exata)
-    - `category`: Filtrar produtos por categoria específica
+    - `search`: Termo de busca opcional para filtrar produtos por nome, descrição ou código de barras
+    - `section`: Filtrar produtos por categoria específica
     - `status`: Filtrar produtos por status (active, inactive, discontinued)
     - `min_price`: Filtrar produtos com preço maior ou igual ao valor informado
     - `max_price`: Filtrar produtos com preço menor ou igual ao valor informado
@@ -206,13 +203,13 @@ async def list_products_endpoint(
 
     **Exemplo de Requisição:**
     ```
-    GET /products/?skip=0&limit=10&search=arroz&category=Alimentos&min_price=10&max_price=20&status=active
+    GET /products/?skip=0&limit=10&search=arroz&section=Alimentos&min_price=10&max_price=20&status=active
     ```
 
     **Exemplo de Resposta (200 - Sucesso):**
     ```json
     {
-      "items": [
+      "products": [
         {
           "id": 1,
           "name": "Arroz Integral 1kg",
@@ -232,19 +229,19 @@ async def list_products_endpoint(
       ],
       "total": 1,
       "page": 1,
-      "size": 10,
-      "pages": 1
+      "page_size": 10,
+      "total_pages": 1
     }
     ```
 
     **Exemplo de Resposta (200 - Lista Vazia):**
     ```json
     {
-      "items": [],
+      "products": [],
       "total": 0,
       "page": 1,
-      "size": 10,
-      "pages": 0
+      "page_size": 10,
+      "total_pages": 0
     }
     ```
 
@@ -283,19 +280,37 @@ async def list_products_endpoint(
     **Notas:**
     - A paginação começa em 0 (zero)
     - O campo `total` representa o número total de registros encontrados
-    - O campo `pages` representa o número total de páginas disponíveis
+    - O campo `total_pages` representa o número total de páginas disponíveis
     - O campo `page` representa a página atual
-    - O campo `size` representa o tamanho da página atual
+    - O campo `page_size` representa o tamanho da página atual
     - Os filtros podem ser combinados para refinar a busca
     - A busca por texto é case-insensitive
     """
-    return await list_products(skip, limit, search, category, status, min_price, max_price, db)
+    page = (skip // limit) + 1 if limit > 0 else 1
+    page_size = limit
+    products, total = await list_products(
+        db=db,
+        page=page,
+        page_size=page_size,
+        search=search,
+        status=status,
+        section=section,
+        min_price=min_price,
+        max_price=max_price
+    )
+    return {
+        "products": [ProductResponse.from_orm(p) for p in products],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": (total + page_size - 1) // page_size if page_size > 0 else 0
+    }
 
 
-@router.get("/{product_id}", response_model=ProductResponse)
+@router.get("/{product_id}", response_model=dict)
 async def get_product_by_id_endpoint(
-    product_id: int = Path(..., description="ID do produto a ser buscado", ge=1),
-    db: Session = Depends(get_db),
+    product_id: int = Path(..., ge=1),
+    db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_active_user)
 ):
     """
@@ -327,20 +342,22 @@ async def get_product_by_id_endpoint(
     **Exemplo de Resposta (200 - Sucesso):**
     ```json
     {
-      "id": 1,
-      "name": "Arroz Integral 1kg",
-      "description": "Arroz integral tipo 1, embalagem de 1kg",
-      "barcode": "7891234567890",
-      "price": 12.90,
-      "cost_price": 8.50,
-      "stock": 100,
-      "min_stock": 20,
-      "category": "Alimentos",
-      "brand": "Marca Premium",
-      "expiration_date": "2024-12-31",
-      "status": "active",
-      "created_at": "2024-03-20T10:00:00.000Z",
-      "updated_at": "2024-03-20T10:00:00.000Z"
+      "product": {
+        "id": 1,
+        "name": "Arroz Integral 1kg",
+        "description": "Arroz integral tipo 1, embalagem de 1kg",
+        "barcode": "7891234567890",
+        "price": 12.90,
+        "cost_price": 8.50,
+        "stock": 100,
+        "min_stock": 20,
+        "category": "Alimentos",
+        "brand": "Marca Premium",
+        "expiration_date": "2024-12-31",
+        "status": "active",
+        "created_at": "2024-03-20T10:00:00.000Z",
+        "updated_at": "2024-03-20T10:00:00.000Z"
+      }
     }
     ```
 
@@ -380,14 +397,17 @@ async def get_product_by_id_endpoint(
     - O campo `status` indica se o produto está ativo, inativo ou descontinuado
     - O campo `expiration_date` é opcional e pode ser nulo
     """
-    return await get_product_by_id(product_id, db)
+    product = await get_product_by_id(product_id, db)
+    if not product:
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Produto não encontrado")
+    return {"product": ProductResponse.from_orm(product)}
 
 
 @router.put("/{product_id}", response_model=ProductResponse)
 async def update_product_endpoint(
     product_id: int = Path(..., description="ID do produto a ser atualizado", ge=1),
     product_update: ProductUpdate = Body(..., description="Dados do produto a serem atualizados"),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_admin_user)
 ):
     """
@@ -529,7 +549,7 @@ async def update_product_endpoint(
 @router.delete("/{product_id}", status_code=HTTPStatus.NO_CONTENT)
 async def delete_product_endpoint(
     product_id: int = Path(..., description="ID do produto a ser excluído", ge=1),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_admin_user)
 ):
     """

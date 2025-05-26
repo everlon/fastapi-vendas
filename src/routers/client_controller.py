@@ -1,6 +1,6 @@
 from http import HTTPStatus
 from typing_extensions import List
-from fastapi import APIRouter, Depends, HTTPException, Query, Path, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, Path, Body, Response
 
 from sqlalchemy.orm import Session
 from database import get_db
@@ -146,7 +146,7 @@ async def create_client_endpoint(client: ClientCreate, db: Session = Depends(get
     return await create_client(client, db)
 
 
-@router.get("/", response_model=List[ClientResponse])
+@router.get("/", response_model=PaginatedClientResponse)
 async def list_clients_endpoint(
     skip: int = Query(0, description="Número de registros para pular (paginação)"),
     limit: int = Query(10, description="Número máximo de registros por página"),
@@ -189,7 +189,7 @@ async def list_clients_endpoint(
     **Exemplo de Resposta (200 - Sucesso):**
     ```json
     {
-      "items": [
+      "clients": [
         {
           "id": 1,
           "name": "João da Silva",
@@ -219,7 +219,7 @@ async def list_clients_endpoint(
     **Exemplo de Resposta (200 - Lista Vazia):**
     ```json
     {
-      "items": [],
+      "clients": [],
       "total": 0,
       "page": 1,
       "size": 10,
@@ -257,7 +257,18 @@ async def list_clients_endpoint(
     - O campo `page` representa a página atual
     - O campo `size` representa o tamanho da página atual
     """
-    return await list_clients(skip, limit, search, db)
+    page = (skip // limit) + 1 if limit else 1
+    page_size = limit
+    clients, total = await list_clients(db, page=page, page_size=page_size, search=search)
+    clients_response = [ClientResponse.from_orm(client) for client in clients]
+    total_pages = (total + page_size - 1) // page_size if page_size > 0 else 0
+    return {
+        'clients': clients_response,
+        'total': total,
+        'page': page,
+        'page_size': page_size,
+        'total_pages': total_pages
+    }
 
 
 @router.get("/{client_id}", response_model=ClientResponse)
@@ -307,6 +318,7 @@ async def get_client_by_id_endpoint(
         "state": "SP",
         "zip_code": "01234567"
       },
+      "active": true,
       "created_at": "2024-03-20T10:00:00.000Z",
       "updated_at": "2024-03-20T10:00:00.000Z"
     }
@@ -346,7 +358,10 @@ async def get_client_by_id_endpoint(
     - Todos os campos do cliente são retornados na resposta
     - As datas são retornadas no formato ISO 8601
     """
-    return await get_client_by_id(client_id, db)
+    client = await get_client_by_id(client_id, db)
+    if not client:
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Cliente não encontrado")
+    return ClientResponse.from_orm(client)
 
 
 @router.put("/{client_id}", response_model=ClientResponse)
@@ -487,79 +502,46 @@ async def update_client_endpoint(
 
 @router.delete("/{client_id}", status_code=HTTPStatus.NO_CONTENT)
 async def delete_client_endpoint(
-    client_id: int = Path(..., description="ID do cliente a ser excluído", ge=1),
+    client_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_admin_user)
+    current_user: User = Depends(get_current_admin_user)
 ):
     """
-    **Exclusão de Cliente**
+    **Exclusão de um Cliente**
 
-    Este endpoint permite excluir um cliente existente do sistema.
-    É necessário que o usuário esteja autenticado e tenha permissões de administrador.
+    Este endpoint permite que um usuário autenticado (com permissão de administrador) exclua um cliente existente, removendo-o permanentemente do banco de dados.
 
     **Parâmetros de Caminho:**
-    - `client_id`: ID do cliente a ser excluído (inteiro, obrigatório, maior que zero)
+    - `client_id`: ID do cliente a ser excluído (integer, obrigatório, maior que zero).
 
     **Regras de Negócio:**
-    - O ID do cliente deve existir na base de dados
-    - Apenas usuários autenticados com permissões de administrador podem excluir clientes
-    - A exclusão é permanente e não pode ser desfeita
-    - Clientes com pedidos associados não podem ser excluídos
-    - O sistema verifica se existem pedidos antes de permitir a exclusão
+    - É necessário que o usuário esteja autenticado e possua permissão de administrador (is_admin=True) para excluir um cliente.
+    - O `client_id` fornecido deve corresponder a um cliente existente.
+    - A exclusão é permanente e remove o cliente do banco de dados.
+    - Não é possível excluir um cliente que possui pedidos associados a ele.
+    - Se o cliente tiver pedidos, a exclusão será bloqueada e retornará um erro 409 Conflict.
 
     **Casos de Uso:**
-    - Remoção de clientes duplicados
-    - Exclusão de clientes inativos
-    - Limpeza de cadastros inválidos
-    - Remoção de clientes que solicitaram exclusão de dados
+    - Um administrador remove um cliente que não deseja mais utilizar o sistema.
+    - Integração com um sistema externo que exclui clientes (por exemplo, após um processo de limpeza de dados).
 
     **Exemplo de Requisição:**
     ```
-    DELETE /clients/1
+    DELETE /clients/456
     ```
 
-    **Exemplo de Resposta (204 - Sucesso):**
-    ```
-    [Sem corpo de resposta]
+    **Exemplo de Resposta (Cliente Excluído):**
+    ```json
+    {
+      "message": "Cliente excluído com sucesso."
+    }
     ```
 
     **Códigos de Erro:**
     - `400 Bad Request`: ID do cliente inválido (menor que 1)
-    - `401 Unauthorized`: Token de autenticação não fornecido ou inválido
-    - `403 Forbidden`: Usuário não tem permissões de administrador
-    - `404 Not Found`: Cliente não encontrado
-    - `409 Conflict`: Cliente possui pedidos associados
-
-    **Exemplo de Resposta de Erro (400 - ID Inválido):**
-    ```json
-    {
-      "detail": "O ID do cliente deve ser maior que zero"
-    }
-    ```
-
-    **Exemplo de Resposta de Erro (401 - Não Autenticado):**
-    ```json
-    {
-      "detail": "Não foi possível validar as credenciais",
-      "headers": {
-        "WWW-Authenticate": "Bearer"
-      }
-    }
-    ```
-
-    **Exemplo de Resposta de Erro (403 - Sem Permissão):**
-    ```json
-    {
-      "detail": "Não autorizado: apenas administradores podem realizar esta ação."
-    }
-    ```
-
-    **Exemplo de Resposta de Erro (404 - Cliente Não Encontrado):**
-    ```json
-    {
-      "detail": "Cliente não encontrado"
-    }
-    ```
+    - `401 Unauthorized`: O usuário não está autenticado ou não possui permissão de administrador
+    - `404 Not Found`: O cliente com o ID fornecido não foi encontrado
+    - `409 Conflict`: O cliente possui pedidos associados e não pode ser excluído
 
     **Exemplo de Resposta de Erro (409 - Cliente com Pedidos):**
     ```json
@@ -570,10 +552,9 @@ async def delete_client_endpoint(
 
     **Notas:**
     - A exclusão é permanente e não pode ser desfeita
-    - O sistema verifica automaticamente se existem pedidos associados
     - Recomenda-se fazer backup dos dados antes de excluir clientes
-    - A exclusão de um cliente não afeta os pedidos existentes
+    - Considere usar a atualização de status para "inactive" em vez da exclusão
+    - Clientes com pedidos devem ser mantidos no sistema por questões de histórico e auditoria
     """
-    await delete_client(client_id, db)
-
-    return True
+    await delete_client(id=client_id, db=db)
+    return Response(status_code=HTTPStatus.NO_CONTENT)

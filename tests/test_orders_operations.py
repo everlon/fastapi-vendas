@@ -922,3 +922,4 @@ async def test_delete_order_other_user(client: AsyncClient, test_client: Client)
         )
         assert delete_response.status_code == 404 # Deve retornar 404 porque o pedido não pertence a este usuário
         assert "Pedido não encontrado" in delete_response.json()["detail"]
+ 

@@ -22,19 +22,19 @@ Sistema de gestão de pedidos desenvolvido em Python com FastAPI, incluindo func
 ## 🔧 Instalação e Execução
 
 1. Clone o repositório:
-```bash
+```
 git clone https://github.com/seu-usuario/infog2.git
 cd infog2
 ```
 
 2. Configure as variáveis de ambiente:
-```bash
+```
 cp .env.example .env
 ```
 Edite o arquivo `.env` com suas configurações locais.
 
 3. Inicie os containers com Docker Compose:
-```bash
+```
 docker-compose up -d
 ```
 
@@ -48,11 +48,16 @@ docker-compose up -d
 ### Executando os Testes
 
 1. **Testes Unitários**
-```bash
+
 # Executar todos os testes unitários
+
+```
 docker-compose exec infog2 pytest tests/unit/ -v
+```
 
 # Executar testes de um módulo específico
+
+```
 docker-compose exec infog2 pytest tests/unit/test_client_service.py -v
 docker-compose exec infog2 pytest tests/unit/test_product_service.py -v
 docker-compose exec infog2 pytest tests/unit/test_order_service.py -v
@@ -60,8 +65,10 @@ docker-compose exec infog2 pytest tests/unit/test_user_service.py -v
 ```
 
 2. **Testes de Integração**
-```bash
+
 # Executar todos os testes de integração
+
+```
 docker-compose exec infog2 pytest tests/test_clients_operations.py -v
 docker-compose exec infog2 pytest tests/test_products_operations.py -v
 docker-compose exec infog2 pytest tests/test_orders_operations.py -v
@@ -69,10 +76,13 @@ docker-compose exec infog2 pytest tests/test_auth_permissions.py -v
 ```
 
 3. **Testes de Autenticação**
-```bash
+
 # Executar testes de autenticação e permissões
+
+```
 docker-compose exec infog2 pytest tests/test_auth_permissions.py -v
 ```
+
 
 ### Estrutura dos Testes
 
@@ -131,14 +141,14 @@ A documentação completa da API está disponível em:
 A API utiliza autenticação JWT (JSON Web Token). Para acessar endpoints protegidos:
 
 1. Obtenha um token de acesso:
-```bash
+```
 curl -X POST "http://localhost:8000/token" \
      -H "Content-Type: application/x-www-form-urlencoded" \
      -d "username=seu_usuario&password=sua_senha"
 ```
 
 2. Use o token retornado no header das requisições:
-```bash
+```
 curl -X GET "http://localhost:8000/clients/" \
      -H "Authorization: Bearer seu_token_aqui"
 ```
@@ -160,51 +170,21 @@ infog2/
 ├── .env               # Variáveis de ambiente
 ├── .env.example       # Exemplo de variáveis de ambiente
 ├── docker-compose.yml # Configuração do Docker Compose
-├── Dockerfile         # Configuração do Docker
-└── requirements.txt   # Dependências do projeto
+└── Dockerfile         # Configuração do Docker
 ```
 
 ## 🛠️ Desenvolvimento
 
 ### Ambiente de Desenvolvimento
 
-1. Instale as dependências de desenvolvimento:
-```bash
-pip install -r requirements-dev.txt
+1. Configure o ambiente virtual:
 ```
-
-2. Configure o ambiente virtual:
-```bash
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
 venv\Scripts\activate     # Windows
 ```
 
 3. Execute os testes durante o desenvolvimento:
-```bash
-pytest tests/ -v --cov=src
 ```
-
-### Convenções de Código
-
-- PEP 8 para estilo de código
-- Docstrings em formato Google
-- Type hints em todas as funções
-- Testes unitários para serviços
-- Testes de integração para endpoints
-
-## 📝 Licença
-
-Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
-
-## 🤝 Contribuição
-
-1. Faça um fork do projeto
-2. Crie uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
-3. Commit suas mudanças (`git commit -m 'Add some AmazingFeature'`)
-4. Push para a branch (`git push origin feature/AmazingFeature`)
-5. Abra um Pull Request
-
-## 📧 Suporte
-
-Para suporte, envie um email para seu-email@exemplo.com ou abra uma issue no GitHub.
+pytest -v
+```

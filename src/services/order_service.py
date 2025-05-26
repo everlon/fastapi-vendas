@@ -15,6 +15,13 @@ from src.schemas.order import OrderCreate, OrderItemSchema, OrderUpdate # Import
 # Podemos precisar importar schemas de saída se o serviço retornar o schema formatado
 # from src.schemas.order import OrderResponse, OrderItemDetailSchema
 
+from src.notifications.notification_service import NotificationService # Importar NotificationService
+from src.notifications.email_channel import EmailNotificationChannel # Importar EmailNotificationChannel
+
+# Instanciar o serviço de notificação com os canais desejados
+# Por enquanto, apenas o canal de email dummy
+notification_service = NotificationService(channels=[EmailNotificationChannel()])
+
 
 async def create_order(db: AsyncSession, order_data: OrderCreate, created_by_user: UserModel) -> Order:
     """
@@ -80,6 +87,17 @@ async def create_order(db: AsyncSession, order_data: OrderCreate, created_by_use
     db.add(new_order)
     await db.commit()
     await db.refresh(new_order)
+
+    # Notificar após a criação bem-sucedida do pedido
+    recipient_email = created_by_user.email # Supondo que o usuário tenha um email
+    order_details = {
+        "order_id": new_order.id,
+        "client_id": new_order.client_id,
+        "total": new_order.total,
+        "status": new_order.status,
+        # Adicionar mais detalhes conforme necessário
+    }
+    notification_service.notify_order_created(recipient_email, order_details)
 
     return new_order
 
@@ -270,3 +288,98 @@ async def delete_order(db: AsyncSession, order_id: int, created_by_user: UserMod
     await db.commit()
     # O objeto order não deve ser mais acessado após o commit da exclusão
     return order # Retornando o objeto antes do commit final para fins de teste/verificação, se necessário. Em produção, pode retornar uma confirmação. 
+
+async def list_orders(
+    db: AsyncSession,
+    page: int = 1,
+    page_size: int = 10,
+    client_id: int = None,
+    status: str = None,
+    start_date: datetime = None,
+    end_date: datetime = None
+) -> dict:
+    """
+    Lista pedidos com paginação e filtros.
+    
+    Args:
+        db: Sessão do banco de dados
+        page: Número da página (começa em 1)
+        page_size: Tamanho da página
+        client_id: Filtro por cliente
+        status: Filtro por status
+        start_date: Data inicial
+        end_date: Data final
+        
+    Returns:
+        Dict com pedidos e metadados de paginação
+    """
+    query = select(Order)
+
+    if client_id:
+        query = query.where(Order.client_id == client_id)
+
+    if status:
+        query = query.where(Order.status == status)
+
+    if start_date:
+        query = query.where(Order.created_at >= start_date)
+
+    if end_date:
+        query = query.where(Order.created_at <= end_date)
+
+    # Calcular total de registros
+    total_query = select(func.count()).select_from(query.subquery())
+    total = await db.execute(total_query)
+    total = total.scalar()
+
+    # Aplicar paginação
+    query = query.offset((page - 1) * page_size).limit(page_size)
+    
+    # Executar query
+    result = await db.execute(query)
+    orders = result.scalars().all()
+
+    # Buscar itens e produtos para cada pedido
+    orders_with_items = []
+    for order in orders:
+        items_query = select(OrderItem).where(OrderItem.order_id == order.id)
+        items_result = await db.execute(items_query)
+        items = items_result.scalars().all()
+
+        product_ids = [item.product_id for item in items]
+        products_query = select(Product).where(Product.id.in_(product_ids))
+        products_result = await db.execute(products_query)
+        products = {p.id: p for p in products_result.scalars().all()}
+
+        order_items = []
+        for item in items:
+            product = products.get(item.product_id)
+            if product:
+                order_items.append({
+                    "id": item.id,
+                    "product": product,
+                    "quantity": item.quantity,
+                    "price_at_time_of_purchase": item.price_at_time_of_purchase
+                })
+
+        orders_with_items.append({
+            **order.__dict__,
+            "items": order_items
+        })
+
+    # Calcular metadados de paginação
+    total_pages = (total + page_size - 1) // page_size
+    has_next = page < total_pages
+    has_prev = page > 1
+
+    return {
+        "orders": orders_with_items,
+        "pagination": {
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "has_next": has_next,
+            "has_prev": has_prev
+        }
+    } 

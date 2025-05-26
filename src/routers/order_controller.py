@@ -93,8 +93,7 @@ async def create_order_endpoint(
     ```
     """
     new_order = await create_order(db=db, order_data=order_data, created_by_user=current_user)
-
-    return new_order
+    return OrderResponse.from_orm(new_order)
 
 
 @router.get("/", response_model=PaginatedOrderResponse)
@@ -242,11 +241,9 @@ async def get_order_by_id_endpoint(
     ```
     """
     order = await get_order_by_id(db=db, order_id=order_id, created_by_user=current_user)
-
     if not order:
         raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Pedido não encontrado")
-        
-    return order
+    return OrderResponse.from_orm(order)
 
 @router.put("/{order_id}", response_model=OrderResponse)
 async def update_order_endpoint(

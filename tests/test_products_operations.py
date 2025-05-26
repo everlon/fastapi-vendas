@@ -244,11 +244,14 @@ async def test_list_products(client: AsyncClient, authenticated_user_token_str: 
 
     # Testar filtro por seção
     response = await client.get(
-        f"{version_prefix}/?section=Eletrônicos",
+        f"{version_prefix}/",
+        params={"section": "Eletrônicos"},
         headers={"Authorization": f"Bearer {authenticated_user_token_str}"}
     )
     assert response.status_code == HTTPStatus.OK
     data = response.json()
+    print("Query (ou cláusula where) gerada (filtro por seção):", response.url.query)
+    print('SECTIONS RETORNADAS:', [p["section"] for p in data["products"]])
     assert all(p["section"] == "Eletrônicos" for p in data["products"])
 
     # Testar filtro por preço

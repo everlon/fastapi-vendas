@@ -30,7 +30,7 @@ async def create_product(product_data: ProductCreate, db: AsyncSession) -> Produ
         status = product_data.status,
         stock_quantity = product_data.stock_quantity,
         barcode = product_data.barcode,
-        section = product_data.section,
+        section = product_data.section.strip() if product_data.section else None,
         expiration_date = product_data.expiration_date,
         images = product_data.images
     )
@@ -63,14 +63,16 @@ async def list_products(
     if status:
         query = query.where(Product.status == status)
 
-    if section:
-        query = query.where(Product.section.ilike(f"%{section}%"))
+    if section and section.strip():
+        query = query.where(func.trim(Product.section) == section.strip())
 
     if min_price is not None:
         query = query.where(Product.price >= min_price)
 
     if max_price is not None:
         query = query.where(Product.price <= max_price)
+
+    await db.flush()
 
     total_result = await db.execute(select(func.count()).select_from(query.subquery()))
     total = total_result.scalar_one()

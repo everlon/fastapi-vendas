@@ -38,3 +38,4 @@ class Client(Base):
             "state": self.state,
             "zip_code": self.zip_code
         }
+ 

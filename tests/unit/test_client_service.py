@@ -191,9 +191,17 @@ async def test_update_client_duplicate_email(mock_db, mock_client):
 @pytest.mark.asyncio
 async def test_delete_client_success(mock_db, mock_client):
     """Testa a exclusão bem-sucedida de um cliente."""
-    mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = mock_client
-    mock_db.execute.return_value = mock_result
+    # Mock para a verificação do cliente
+    mock_client_result = MagicMock()
+    mock_client_result.scalar_one_or_none.return_value = mock_client
+    # Mock para a verificação de pedidos (retorna lista vazia)
+    mock_orders_result = MagicMock()
+    mock_orders_result.unique.return_value = mock_orders_result
+    mock_orders_result.scalars.return_value.all.return_value = []
+    mock_db.execute.side_effect = [
+        mock_client_result,  # Primeira chamada: verificar se cliente existe
+        mock_orders_result   # Segunda chamada: verificar pedidos (retorna lista vazia)
+    ]
     await delete_client(1, mock_db)
     mock_db.delete.assert_called_once_with(mock_client)
     mock_db.commit.assert_called_once()
@@ -208,6 +216,25 @@ async def test_delete_client_not_found(mock_db):
         await delete_client(999, mock_db)
     assert exc_info.value.status_code == HTTPStatus.NOT_FOUND
     assert "Cliente não encontrado" in str(exc_info.value.detail)
+
+@pytest.mark.asyncio
+async def test_delete_client_with_orders(mock_db, mock_client):
+    """Testa a tentativa de exclusão de um cliente que possui pedidos associados."""
+    # Mock para a verificação do cliente
+    mock_client_result = MagicMock()
+    mock_client_result.scalar_one_or_none.return_value = mock_client
+    mock_db.execute.side_effect = [
+        mock_client_result,  # Primeira chamada: verificar se cliente existe
+        MagicMock(scalars=lambda: MagicMock(all=lambda: [MagicMock()]))  # Segunda chamada: verificar pedidos (retorna uma lista com um pedido)
+    ]
+
+    with pytest.raises(HTTPException) as exc_info:
+        await delete_client(1, mock_db)
+    
+    assert exc_info.value.status_code == HTTPStatus.CONFLICT
+    assert "Não é possível excluir o cliente pois existem pedidos associados a ele" in str(exc_info.value.detail)
+    mock_db.delete.assert_not_called()  # Não deve chamar delete
+    mock_db.commit.assert_not_called()  # Não deve chamar commit
 
 @pytest.mark.asyncio
 async def test_list_clients_with_filters(mock_db, mock_client):

@@ -134,5 +134,17 @@ async def delete_client(id: int, db: AsyncSession) -> None:
     if not db_client:
         raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Cliente não encontrado")
 
+    # Verifica se existem pedidos associados ao cliente
+    from src.models.order import Order
+    orders_result = await db.execute(select(Order).where(Order.client_id == id))
+    orders = orders_result.unique().scalars().all()
+
+    if orders:
+        raise HTTPException(
+            status_code=HTTPStatus.CONFLICT,
+            detail="Não é possível excluir o cliente pois existem pedidos associados a ele"
+        )
+
+    # Se não houver pedidos, procede com a exclusão
     await db.delete(db_client)
     await db.commit()

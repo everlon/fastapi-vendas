@@ -59,3 +59,4 @@ class PaginatedClientResponse(BaseModel):
     page: int = Field(..., description="Número da página atual.", example=1)
     page_size: int = Field(..., description="Número de clientes por página.", example=10)
     total_pages: int = Field(..., description="Número total de páginas disponíveis.", example=10)
+ 

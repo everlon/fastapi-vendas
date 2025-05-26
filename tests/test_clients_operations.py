@@ -21,6 +21,7 @@ from src.schemas.client import ClientCreate, ClientUpdate
 from src.models.user import User as UserModel # Importar modelo de usuário
 from src.models.client import Client as ClientModel # Importar modelo de cliente
 from src.services.user_service import create_user # Importar serviço de usuário
+from src.schemas.product import ProductStatusEnum
 
 # Configuração do banco de dados de teste (SQLite em memória - ASSÍNCRONO)
 SQLALCHEMY_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
@@ -346,21 +347,18 @@ async def test_get_client_by_id(client: AsyncClient, authenticated_user_token_st
     )
     assert response.status_code == HTTPStatus.OK
     data = response.json()
-    assert "client" in data
-    client = data["client"]
-    
-    assert client["id"] == client_id
-    assert client["name"] == client_data["name"]
-    assert client["email"] == client_data["email"]
-    assert client["phone"] == client_data["phone"]
-    assert client["cpf"] == client_data["cpf"]
-    assert client["address"]["street"] == client_data["address"]["street"]
-    assert client["address"]["number"] == client_data["address"]["number"]
-    assert client["address"]["complement"] == client_data["address"]["complement"]
-    assert client["address"]["neighborhood"] == client_data["address"]["neighborhood"]
-    assert client["address"]["city"] == client_data["address"]["city"]
-    assert client["address"]["state"] == client_data["address"]["state"]
-    assert client["address"]["zip_code"] == client_data["address"]["zip_code"]
+    assert data["id"] == client_id
+    assert data["name"] == client_data["name"]
+    assert data["email"] == client_data["email"]
+    assert data["phone"] == client_data["phone"]
+    assert data["cpf"] == client_data["cpf"]
+    assert data["address"]["street"] == client_data["address"]["street"]
+    assert data["address"]["number"] == client_data["address"]["number"]
+    assert data["address"]["complement"] == client_data["address"]["complement"]
+    assert data["address"]["neighborhood"] == client_data["address"]["neighborhood"]
+    assert data["address"]["city"] == client_data["address"]["city"]
+    assert data["address"]["state"] == client_data["address"]["state"]
+    assert data["address"]["zip_code"] == client_data["address"]["zip_code"]
 
 @pytest.mark.asyncio
 async def test_get_client_not_found(client: AsyncClient, authenticated_user_token_str: str):
@@ -499,4 +497,88 @@ async def test_delete_client_not_found(client: AsyncClient, authenticated_user_t
         headers={"Authorization": f"Bearer {authenticated_user_token_str}"}
     )
     assert response.status_code == HTTPStatus.NOT_FOUND
-    assert "Cliente não encontrado" in response.json()["detail"] 
+    assert "Cliente não encontrado" in response.json()["detail"]
+
+@pytest.mark.asyncio
+async def test_delete_client_with_orders(client: AsyncClient, authenticated_user_token_str: str):
+    # Criar um cliente para testar
+    client_data = {
+        "name": "Cliente com Pedidos",
+        "email": "cliente.pedidos@teste.com",
+        "phone": "11999999999",
+        "cpf": "52998224725",
+        "address": {
+            "street": "Rua Pedidos",
+            "number": "123",
+            "complement": "Apto 1",
+            "neighborhood": "Centro",
+            "city": "São Paulo",
+            "state": "SP",
+            "zip_code": "01234567"
+        }
+    }
+
+    # Criar o cliente
+    create_response = await client.post(
+        f"{version_prefix}/",
+        json=client_data,
+        headers={"Authorization": f"Bearer {authenticated_user_token_str}"}
+    )
+    assert create_response.status_code == HTTPStatus.CREATED
+    created_client = create_response.json()
+    client_id = created_client["id"]
+
+    # Criar um produto para o pedido
+    product_data = {
+        "name": "Produto Teste",
+        "description": "Descrição do produto",
+        "price": 100.0,
+        "status": ProductStatusEnum.in_stock,
+        "stock_quantity": 50,
+        "barcode": "1234567890123",
+        "section": "Eletrônicos",
+        "expiration_date": None,
+        "images": []
+    }
+
+    product_response = await client.post(
+        "/api/v1/products/",
+        json=product_data,
+        headers={"Authorization": f"Bearer {authenticated_user_token_str}"}
+    )
+    assert product_response.status_code == HTTPStatus.CREATED
+    created_product = product_response.json()
+
+    # Criar um pedido para o cliente
+    order_data = {
+        "client_id": client_id,
+        "items": [
+            {
+                "product_id": created_product["id"],
+                "quantity": 1
+            }
+        ]
+    }
+
+    order_response = await client.post(
+        "/api/v1/orders/",
+        json=order_data,
+        headers={"Authorization": f"Bearer {authenticated_user_token_str}"}
+    )
+    assert order_response.status_code == HTTPStatus.CREATED
+
+    # Tentar deletar o cliente (deve falhar)
+    delete_response = await client.delete(
+        f"{version_prefix}/{client_id}",
+        headers={"Authorization": f"Bearer {authenticated_user_token_str}"}
+    )
+    assert delete_response.status_code == HTTPStatus.CONFLICT
+    assert "Não é possível excluir o cliente pois existem pedidos associados a ele" in delete_response.json()["detail"]
+
+    # Verificar se o cliente ainda existe
+    get_response = await client.get(
+        f"{version_prefix}/{client_id}",
+        headers={"Authorization": f"Bearer {authenticated_user_token_str}"}
+    )
+    assert get_response.status_code == HTTPStatus.OK
+    assert get_response.json()["id"] == client_id 
