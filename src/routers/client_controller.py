@@ -558,3 +558,4 @@ async def delete_client_endpoint(
     """
     await delete_client(id=client_id, db=db)
     return Response(status_code=HTTPStatus.NO_CONTENT)
+ 

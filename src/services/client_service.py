@@ -148,3 +148,4 @@ async def delete_client(id: int, db: AsyncSession) -> None:
     # Se não houver pedidos, procede com a exclusão
     await db.delete(db_client)
     await db.commit()
+ 

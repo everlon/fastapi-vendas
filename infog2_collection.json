@@ -1,0 +1,734 @@
+{
+	"info": {
+		"_postman_id": "your-collection-id",
+		"name": "Infog2 API Collection",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"description": "Coleção Postman para a API Infog2, incluindo rotas de autenticação, usuários, clientes, produtos e pedidos."
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8000",
+			"type": "string",
+			"description": "A URL base da API (altere se necessário)"
+		},
+		{
+			"key": "accessToken",
+			"value": "",
+			"type": "string",
+			"description": "Token de acesso JWT obtido no endpoint de login. Usado para autenticação."
+		}
+	],
+	"item": [
+		{
+			"name": "Authentication",
+			"description": "Rotas para autenticação de usuários",
+			"item": [
+				{
+					"name": "Login for Access Token",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "urlencoded",
+							"urlencoded": [
+								{
+									"key": "username",
+									"value": "testuser",
+									"type": "text",
+									"description": "Nome de usuário para login"
+								},
+								{
+									"key": "password",
+									"value": "testpassword",
+									"type": "text",
+									"description": "Senha do usuário"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/auth/token",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"token"
+							]
+						},
+						"description": "Obtém um token de acesso JWT para um usuário autenticado."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Users",
+			"description": "Rotas para gerenciamento de usuários",
+			"item": [
+				{
+					"name": "Create User",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"username\": \"new_user\",\n  \"email\": \"new.user@example.com\",\n  \"password\": \"securepassword123\",\n  \"full_name\": \"New User\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"users",
+								""
+							]
+						},
+						"description": "Cria um novo usuário."
+					},
+					"response": []
+				},
+				{
+					"name": "Read Current User",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/users/me/",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"users",
+								"me",
+								""
+							]
+						},
+						"description": "Obtém informações do usuário autenticado."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Clients",
+			"description": "Rotas para gerenciamento de clientes",
+			"item": [
+				{
+					"name": "Create Client",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Cliente Exemplo\",\n  \"email\": \"cliente.exemplo@email.com\",\n  \"phone\": \"(11) 91111-2222\",\n  \"cpf\": \"12345678909\",\n  \"address\": {\n    \"street\": \"Rua Exemplo\",\n    \"number\": \"10\",\n    \"complement\": \"\",\n    \"neighborhood\": \"Bairro\",\n    \"city\": \"Cidade\",\n    \"state\": \"SP\",\n    \"zip_code\": \"12345678\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/clients/",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"clients",
+								""
+							]
+						},
+						"description": "Cria um novo cliente (requer admin)."
+					},
+					"response": []
+				},
+				{
+					"name": "List Clients",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/clients/?skip=0&limit=10&search=",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"clients",
+								""
+							],
+							"query": [
+								{
+									"key": "skip",
+									"value": "0"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "search",
+									"value": ""
+								}
+							]
+						},
+						"description": "Lista clientes com paginação e filtro (requer autenticação)."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Client by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/clients/{{client_id}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"clients",
+								"{{client_id}}"
+							],
+							"variable": [
+								{
+									"key": "client_id",
+									"value": "1",
+									"description": "ID do cliente a buscar"
+								}
+							]
+						},
+						"description": "Obtém os detalhes de um cliente específico por ID (requer autenticação)."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Client",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Cliente Exemplo Atualizado\",\n  \"phone\": \"(22) 93333-4444\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/clients/{{client_id}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"clients",
+								"{{client_id}}"
+							],
+							"variable": [
+								{
+									"key": "client_id",
+									"value": "1",
+									"description": "ID do cliente a atualizar"
+								}
+							]
+						},
+						"description": "Atualiza um cliente existente por ID (requer admin)."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Client",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/clients/{{client_id}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"clients",
+								"{{client_id}}"
+							],
+							"variable": [
+								{
+									"key": "client_id",
+									"value": "1",
+									"description": "ID do cliente a deletar"
+								}
+							]
+						},
+						"description": "Deleta um cliente por ID (requer admin)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Products",
+			"description": "Rotas para gerenciamento de produtos",
+			"item": [
+				{
+					"name": "Create Product",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Novo Produto\",\n  \"description\": \"Descrição do novo produto\",\n  \"barcode\": \"112233445566\",\n  \"price\": 50.00,\n  \"cost_price\": 30.00,\n  \"stock\": 100,\n  \"min_stock\": 10,\n  \"category\": \"Categoria\",\n  \"brand\": \"Marca\",\n  \"expiration_date\": \"2025-12-31\",\n  \"status\": \"active\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/products/",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"products",
+								""
+							]
+						},
+						"description": "Cria um novo produto (requer admin)."
+					},
+					"response": []
+				},
+				{
+					"name": "List Products",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/products/?skip=0&limit=10",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"products",
+								""
+							],
+							"query": [
+								{
+									"key": "skip",
+									"value": "0"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "search",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "section",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "status",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "min_price",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "max_price",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Lista produtos com paginação e filtros (requer autenticação)."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Product by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/products/{{product_id}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"products",
+								"{{product_id}}"
+							],
+							"variable": [
+								{
+									"key": "product_id",
+									"value": "1",
+									"description": "ID do produto a buscar"
+								}
+							]
+						},
+						"description": "Obtém os detalhes de um produto específico por ID (requer autenticação)."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Product",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"price\": 55.00,\n  \"stock\": 90\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/products/{{product_id}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"products",
+								"{{product_id}}"
+							],
+							"variable": [
+								{
+									"key": "product_id",
+									"value": "1",
+									"description": "ID do produto a atualizar"
+								}
+							]
+						},
+						"description": "Atualiza um produto existente por ID (requer admin)."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Product",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/products/{{product_id}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"products",
+								"{{product_id}}"
+							]
+						},
+						"description": "Deleta um produto por ID (requer admin)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Orders",
+			"description": "Rotas para gerenciamento de pedidos",
+			"item": [
+				{
+					"name": "Create Order",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"client_id\": 1, \n  \"items\": [\n    {\n      \"product_id\": 1, \n      \"quantity\": 1\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/orders/",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"orders",
+								""
+							]
+						},
+						"description": "Cria um novo pedido (requer autenticação)."
+					},
+					"response": []
+				},
+				{
+					"name": "List Orders",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/orders/?skip=0&limit=10",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"orders",
+								""
+							],
+							"query": [
+								{
+									"key": "skip",
+									"value": "0"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "client_id",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "order_id",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "status",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "section",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "start_date",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "end_date",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Lista pedidos com paginação e filtros (requer autenticação). Inclui apenas pedidos criados pelo usuário autenticado."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Order by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/orders/{{order_id}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"orders",
+								"{{order_id}}"
+							],
+							"variable": [
+								{
+									"key": "order_id",
+									"value": "1",
+									"description": "ID do pedido a buscar"
+								}
+							]
+						},
+						"description": "Obtém os detalhes de um pedido específico por ID (requer autenticação e que o pedido pertença ao usuário)."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Order",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"processando\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/orders/{{order_id}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"orders",
+								"{{order_id}}"
+							]
+						},
+						"description": "Atualiza um pedido existente por ID (requer autenticação e que o pedido pertença ao usuário). Atualmente permite apenas atualizar o status."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Order",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/orders/{{order_id}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"orders",
+								"{{order_id}}"
+							]
+						},
+						"description": "Deleta um pedido por ID (requer autenticação e que o pedido pertença ao usuário)."
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}

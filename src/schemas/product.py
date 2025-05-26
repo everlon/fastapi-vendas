@@ -18,7 +18,7 @@ class ProductCreate(BaseModel):
     status: ProductStatusEnum = Field(..., description="Status do produto.", example=ProductStatusEnum.in_stock)
     stock_quantity: int = Field(..., ge=0, description="Quantidade em estoque do produto.", example=10)
     barcode: str = Field(..., description="Código de barras do produto.", max_length=100, example="1234567890123")
-    section: Optional[str] = Field(None, description="Seção/Categoria do produto.", max_length=100, example="Eletrônicos")
+    section: str = Field(..., description="Seção/Categoria do produto.", max_length=100, example="Eletrônicos")
     expiration_date: Optional[datetime] = Field(None, description="Data de validade do produto.", example="2024-12-31T23:59:59")
     images: Optional[List[str]] = Field(None, description="Lista de URLs das imagens do produto.", example=["http://example.com/img1.jpg", "http://example.com/img2.jpg"])
 

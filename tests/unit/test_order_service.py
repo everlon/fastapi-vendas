@@ -17,6 +17,7 @@ from src.models.product import Product
 from src.models.client import Client
 from src.models.user import User
 from src.schemas.order import OrderCreate, OrderUpdate
+from src.notifications.notification_service import NotificationService
 
 @pytest.fixture
 def mock_db():
@@ -81,8 +82,15 @@ def mock_order(mock_client, mock_admin_user):
         ]
     )
 
+@pytest.fixture
+def mock_notification_service():
+    """Fixture que fornece um mock para NotificationService."""
+    mock_service = MagicMock(spec=NotificationService)
+    mock_service.send_order_creation_notification = AsyncMock()
+    return mock_service
+
 @pytest.mark.asyncio
-async def test_create_order_success(mock_db, mock_client, mock_product, mock_admin_user):
+async def test_create_order_success(mock_db, mock_client, mock_product, mock_admin_user, mock_notification_service):
     """Testa a criação bem-sucedida de um pedido."""
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.side_effect = [mock_client, mock_product]
@@ -93,7 +101,6 @@ async def test_create_order_success(mock_db, mock_client, mock_product, mock_adm
         items=[{"product_id": mock_product.id, "quantity": 2}]
     )
     
-    # Configurar o mock do refresh para atualizar o pedido
     async def mock_refresh(order):
         order.id = 1
         order.total = 20.0
@@ -110,7 +117,7 @@ async def test_create_order_success(mock_db, mock_client, mock_product, mock_adm
     
     mock_db.refresh.side_effect = mock_refresh
     
-    result = await create_order(mock_db, order_data, mock_admin_user)
+    result = await create_order(mock_db, order_data, mock_admin_user, notification_service=mock_notification_service)
     
     assert result.client_id == mock_client.id
     assert result.created_by_user_id == mock_admin_user.id
@@ -119,14 +126,23 @@ async def test_create_order_success(mock_db, mock_client, mock_product, mock_adm
     assert result.items[0].quantity == 2
     assert result.items[0].price_at_time_of_purchase == 10.0
     
-    # Verificar se o estoque foi atualizado
     assert mock_product.stock_quantity == 98  # 100 - 2
     mock_db.add.assert_called()
     mock_db.commit.assert_called_once()
     mock_db.refresh.assert_called_once()
+    
+    mock_notification_service.send_order_creation_notification.assert_called_once_with(
+        "everlon@protonmail.com",
+        {
+            'order_id': 1, 
+            'client_id': mock_client.id, 
+            'total': 20.0, 
+            'status': 'pendente'
+        }
+    )
 
 @pytest.mark.asyncio
-async def test_create_order_client_not_found(mock_db, mock_admin_user):
+async def test_create_order_client_not_found(mock_db, mock_admin_user, mock_notification_service):
     """Testa a criação de pedido com cliente inexistente."""
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = None
@@ -138,13 +154,15 @@ async def test_create_order_client_not_found(mock_db, mock_admin_user):
     )
     
     with pytest.raises(HTTPException) as exc_info:
-        await create_order(mock_db, order_data, mock_admin_user)
+        await create_order(mock_db, order_data, mock_admin_user, notification_service=mock_notification_service)
     
     assert exc_info.value.status_code == HTTPStatus.NOT_FOUND
     assert "Cliente com ID 999 não encontrado" in str(exc_info.value.detail)
+    
+    mock_notification_service.send_order_creation_notification.assert_not_called()
 
 @pytest.mark.asyncio
-async def test_create_order_product_not_found(mock_db, mock_client, mock_admin_user):
+async def test_create_order_product_not_found(mock_db, mock_client, mock_admin_user, mock_notification_service):
     """Testa a criação de pedido com produto inexistente."""
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.side_effect = [mock_client, None]
@@ -156,13 +174,15 @@ async def test_create_order_product_not_found(mock_db, mock_client, mock_admin_u
     )
     
     with pytest.raises(HTTPException) as exc_info:
-        await create_order(mock_db, order_data, mock_admin_user)
+        await create_order(mock_db, order_data, mock_admin_user, notification_service=mock_notification_service)
     
     assert exc_info.value.status_code == HTTPStatus.NOT_FOUND
     assert "Produto com ID 999 não encontrado" in str(exc_info.value.detail)
+    
+    mock_notification_service.send_order_creation_notification.assert_not_called()
 
 @pytest.mark.asyncio
-async def test_create_order_insufficient_stock(mock_db, mock_client, mock_product, mock_admin_user):
+async def test_create_order_insufficient_stock(mock_db, mock_client, mock_product, mock_admin_user, mock_notification_service):
     """Testa a criação de pedido com quantidade maior que o estoque disponível."""
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.side_effect = [mock_client, mock_product]
@@ -174,10 +194,12 @@ async def test_create_order_insufficient_stock(mock_db, mock_client, mock_produc
     )
     
     with pytest.raises(HTTPException) as exc_info:
-        await create_order(mock_db, order_data, mock_admin_user)
+        await create_order(mock_db, order_data, mock_admin_user, notification_service=mock_notification_service)
     
     assert exc_info.value.status_code == HTTPStatus.BAD_REQUEST
     assert "Estoque insuficiente" in str(exc_info.value.detail)
+    
+    mock_notification_service.send_order_creation_notification.assert_not_called()
 
 @pytest.mark.asyncio
 async def test_get_order_by_id_success(mock_db, mock_order, mock_admin_user):
@@ -211,7 +233,6 @@ async def test_update_order_success(mock_db, mock_order, mock_admin_user):
     
     update_data = OrderUpdate(status="processando")
     
-    # Configurar o mock do refresh para atualizar o pedido
     async def mock_refresh(order):
         order.status = update_data.status
         return order
@@ -233,10 +254,8 @@ async def test_delete_order_success(mock_db, mock_order, mock_product, mock_admi
     
     await delete_order(mock_db, mock_order.id, mock_admin_user)
     
-    # Verificar se o pedido foi deletado
     mock_db.delete.assert_called_once_with(mock_order)
     
-    # Verificar se o estoque foi restaurado
     assert mock_product.stock_quantity == 102  # 100 + 2 (quantidade do pedido)
     mock_db.commit.assert_called_once()
 

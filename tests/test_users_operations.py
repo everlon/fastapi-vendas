@@ -66,8 +66,6 @@ async def login_token(username, password): # Tornar a função assíncrona
 
 # --- Testes de Usuário ---
 
-# Adicionar async def aos testes que interagem com o DB assíncrono
-
 async def test_create_user():
     # Limpa o DB antes de cada teste de criação
     async with engine.begin() as conn:

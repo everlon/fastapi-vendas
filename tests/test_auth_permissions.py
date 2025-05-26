@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import delete
 from fastapi import FastAPI
+from unittest.mock import MagicMock, AsyncMock
 
 from database import Base, get_db
 from src.models.user import User
@@ -27,6 +28,10 @@ from src.routers.user_controller import router as user_router
 from src.routers.order_controller import router as order_router
 from src.routers.product_controller import router as product_controller
 from src.routers.client_controller import router as client_controller
+
+# Importar NotificationService e EmailNotificationChannel
+from src.notifications.notification_service import NotificationService
+from src.notifications.email_channel import EmailNotificationChannel
 
 DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -65,6 +70,25 @@ app.include_router(product_controller, prefix="/api/v1/products", tags=["product
 app.include_router(client_controller, prefix="/api/v1/clients", tags=["clients"])
 
 app.dependency_overrides[get_db] = get_test_db
+
+# Nova fixture para mockar o NotificationService
+@pytest.fixture
+def mock_notification_service():
+    # Cria um MagicMock para o NotificationService
+    mock_service = MagicMock(spec=NotificationService)
+    # Mocka o método send_order_creation_notification para ser um AsyncMock
+    mock_service.send_order_creation_notification = AsyncMock()
+    return mock_service
+
+# Sobrescrever a dependência do NotificationService na aplicação de teste
+# Isso garante que o mock seja usado quando o controller precisar do serviço
+def override_get_notification_service():
+    # Retorna o mock do serviço de notificação
+    # NOTA: Esta dependência será injetada nos endpoints, mas não nas chamadas diretas como na fixture test_order.
+    # Portanto, ainda precisamos passar o mock explicitamente na fixture test_order.
+    return mock_notification_service()
+
+# app.dependency_overrides[get_notification_service] = override_get_notification_service # Comentado pois a fixture test_order chama o service direto
 
 @pytest.fixture(scope="session")
 async def client():
@@ -171,7 +195,7 @@ async def test_client(admin_token: str):
         return client
 
 @pytest.fixture
-async def test_order(admin_token: str, test_product: Product, test_client: Client, test_users: dict):
+async def test_order(admin_token: str, test_product: Product, test_client: Client, test_users: dict, mock_notification_service: MagicMock):
     async with TestingSessionLocal() as db:
         order_data = OrderCreate(
             client_id=test_client.id,
@@ -180,7 +204,7 @@ async def test_order(admin_token: str, test_product: Product, test_client: Clien
         from src.models.user import User as UserModel
         from sqlalchemy.future import select
         admin = (await db.execute(select(UserModel).where(UserModel.id == test_users["admin_id"]))).scalar_one()
-        order = await create_order(db=db, order_data=order_data, created_by_user=admin)
+        order = await create_order(db=db, order_data=order_data, created_by_user=admin, notification_service=mock_notification_service)
         await db.commit()
         await db.refresh(order)
         return order

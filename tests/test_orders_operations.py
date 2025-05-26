@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy import delete
 from fastapi import FastAPI, Depends
 from datetime import datetime
+from unittest.mock import MagicMock, AsyncMock # Importar AsyncMock
 
 from database import Base, get_db
 
@@ -20,7 +21,6 @@ from src.schemas.order import OrderCreate, OrderItemSchema, OrderUpdate
 from src.schemas.client import ClientCreate # Importar schema de Cliente
 
 from src.services.user_service import create_user
-from src.services.order_service import create_order
 from src.services.client_service import create_client
 
 # Importar roteadores
@@ -29,6 +29,9 @@ from src.routers.user_controller import router as user_router
 from src.routers.order_controller import router as order_router
 from src.routers.product_controller import router as product_controller
 from src.routers.client_controller import router as client_controller
+
+# Importar a dependência do controller que queremos sobrescrever
+from src.routers.order_controller import get_notification_service
 
 DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -67,6 +70,24 @@ app.include_router(product_controller, prefix="/api/v1/products", tags=["product
 app.include_router(client_controller, prefix="/api/v1/clients", tags=["clients"])
 
 app.dependency_overrides[get_db] = get_test_db
+
+# Fixture para o NotificationService mockado
+@pytest.fixture
+def mock_notification_service():
+    # Criar uma instância mockada do NotificationService
+    mock_service = MagicMock()
+    # Configurar o método assíncrono para ser um AsyncMock
+    mock_service.send_order_creation_notification = AsyncMock()
+    return mock_service
+
+# Fixture para sobrescrever a dependência get_notification_service com o mock
+@pytest.fixture(autouse=True)
+def override_notification_dependency(mock_notification_service):
+    # Sobrescrever a dependência get_notification_service na aplicação de teste
+    app.dependency_overrides[get_notification_service] = lambda: mock_notification_service
+    yield # Permitir que o teste execute
+    # Limpar a sobrescrita após o teste
+    del app.dependency_overrides[get_notification_service]
 
 @pytest.fixture(scope="session")
 async def client():
@@ -922,4 +943,44 @@ async def test_delete_order_other_user(client: AsyncClient, test_client: Client)
         )
         assert delete_response.status_code == 404 # Deve retornar 404 porque o pedido não pertence a este usuário
         assert "Pedido não encontrado" in delete_response.json()["detail"]
+
+# Novo teste para verificar o envio da notificação ao criar pedido
+@pytest.mark.asyncio
+async def test_order_creation_sends_notification(client: AsyncClient, authenticated_user_token_str: str, test_products: list[Product], test_client: Client, mock_notification_service: MagicMock): # Adicionar mock_notification_service
+    product_data = test_products[0]
+    order_data = {
+        "client_id": test_client.id,
+        "items": [
+            {"product_id": product_data.id, "quantity": 1}
+        ]
+    }
+
+    response = await client.post(
+        "/api/v1/orders/",
+        json=order_data,
+        headers={
+            "Authorization": f"Bearer {authenticated_user_token_str}"
+        }
+    )
+
+    assert response.status_code == 201
+    created_order = response.json()
+
+    # Verificar se o método de notificação foi chamado no mock
+    mock_notification_service.send_order_creation_notification.assert_called_once()
+
+    # Verificar os argumentos com que o método foi chamado
+    # Note que os detalhes do pedido podem variar, então vamos verificar os essenciais e o destinatário
+    called_args, called_kwargs = mock_notification_service.send_order_creation_notification.call_args
+
+    # Verificar o destinatário
+    assert called_args[0] == "everlon@protonmail.com"
+
+    # Verificar alguns detalhes essenciais no dicionário order_details (o segundo argumento)
+    order_details_arg = called_args[1]
+    assert isinstance(order_details_arg, dict)
+    assert order_details_arg["order_id"] == created_order["id"]
+    assert order_details_arg["client_id"] == test_client.id
+    assert order_details_arg["total"] == created_order["total"]
+    assert order_details_arg["status"] == created_order["status"]
  

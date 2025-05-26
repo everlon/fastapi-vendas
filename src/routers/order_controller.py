@@ -6,10 +6,27 @@ from datetime import datetime
 
 from database import get_db
 
-from src.services.order_service import create_order, get_orders, get_order_by_id, update_order, delete_order
+from src.services.order_service import OrderService
 from src.schemas.order import OrderCreate, OrderResponse, OrderUpdate, PaginatedOrderResponse
 
 from auth import User, get_current_active_user
+
+from src.notifications.notification_service import NotificationService
+from src.notifications.email_channel import EmailNotificationChannel
+
+
+def get_notification_service():
+    channels = [
+        EmailNotificationChannel(),
+    ]
+    return NotificationService(channels=channels)
+
+
+def get_order_service(
+    db: AsyncSession = Depends(get_db),
+    notification_service: NotificationService = Depends(get_notification_service)
+):
+    return OrderService(db_session=db, notification_service=notification_service)
 
 
 router = APIRouter()
@@ -18,8 +35,8 @@ router = APIRouter()
 @router.post("/", status_code=HTTPStatus.CREATED, response_model=OrderResponse)
 async def create_order_endpoint(
     order_data: OrderCreate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
+    order_service: OrderService = Depends(get_order_service)
 ):
     """
     **Criação de um novo Pedido**
@@ -92,8 +109,10 @@ async def create_order_endpoint(
     }
     ```
     """
-    new_order = await create_order(db=db, order_data=order_data, created_by_user=current_user)
-    return OrderResponse.from_orm(new_order)
+    new_order = await order_service.create_order(order_data, current_user)
+
+    # Temporariamente retornar o objeto do modelo diretamente para depuração
+    return new_order
 
 
 @router.get("/", response_model=PaginatedOrderResponse)
@@ -106,7 +125,7 @@ async def list_orders_endpoint(
     section: Optional[str] = Query(None, description="Filtrar pedidos por seção de produtos.", example="Eletrônicos"),
     start_date: Optional[datetime] = Query(None, description="Filtrar pedidos a partir desta data (inclusive).", example="2023-10-01T00:00:00"),
     end_date: Optional[datetime] = Query(None, description="Filtrar pedidos até esta data (inclusive).", example="2023-10-31T23:59:59"),
-    db: AsyncSession = Depends(get_db),
+    order_service: OrderService = Depends(get_order_service),
     current_user: User = Depends(get_current_active_user)
 ):
     """
@@ -166,8 +185,7 @@ async def list_orders_endpoint(
     }
     ```
     """
-    orders, total_orders = await get_orders(
-        db=db,
+    orders, total_orders = await order_service.get_orders(
         created_by_user=current_user,
         skip=skip,
         limit=limit,
@@ -189,7 +207,7 @@ async def list_orders_endpoint(
 @router.get("/{order_id}", response_model=OrderResponse)
 async def get_order_by_id_endpoint(
     order_id: int,
-    db: AsyncSession = Depends(get_db),
+    order_service: OrderService = Depends(get_order_service),
     current_user: User = Depends(get_current_active_user)
 ):
     """
@@ -240,7 +258,7 @@ async def get_order_by_id_endpoint(
     }
     ```
     """
-    order = await get_order_by_id(db=db, order_id=order_id, created_by_user=current_user)
+    order = await order_service.get_order_by_id(order_id, current_user)
     if not order:
         raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Pedido não encontrado")
     return OrderResponse.from_orm(order)
@@ -249,7 +267,7 @@ async def get_order_by_id_endpoint(
 async def update_order_endpoint(
     order_id: int,
     order_update_data: OrderUpdate,
-    db: AsyncSession = Depends(get_db),
+    order_service: OrderService = Depends(get_order_service),
     current_user: User = Depends(get_current_active_user)
 ):
     """
@@ -306,13 +324,13 @@ async def update_order_endpoint(
     ```
     """
     # Primeiro verifica se o pedido existe e pertence ao usuário
-    order = await get_order_by_id(db=db, order_id=order_id, created_by_user=current_user)
+    order = await order_service.get_order_by_id(order_id, current_user)
     if not order:
         raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Pedido não encontrado")
 
     # Agora que sabemos que o pedido existe e pertence ao usuário, podemos validar e aplicar as atualizações
     try:
-        updated_order = await update_order(db=db, order_id=order_id, order_update_data=order_update_data, created_by_user=current_user)
+        updated_order = await order_service.update_order(order_id, order_update_data, current_user)
         return updated_order
     except HTTPException as e:
         raise e
@@ -320,7 +338,7 @@ async def update_order_endpoint(
 @router.delete("/{order_id}", status_code=HTTPStatus.NO_CONTENT)
 async def delete_order_endpoint(
     order_id: int,
-    db: AsyncSession = Depends(get_db),
+    order_service: OrderService = Depends(get_order_service),
     current_user: User = Depends(get_current_active_user)
 ):
     """
@@ -345,5 +363,5 @@ async def delete_order_endpoint(
     - (Com lógica de permissão adequada) Permitir que um usuário/administrador cancele e remova um pedido.
 
     """
-    await delete_order(db=db, order_id=order_id, created_by_user=current_user)
+    await order_service.delete_order(order_id, current_user)
     return
